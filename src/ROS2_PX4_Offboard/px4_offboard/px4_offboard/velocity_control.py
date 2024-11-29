@@ -68,6 +68,7 @@ class OffboardControl(Node):
     def __init__(self, namespace=''):
         super().__init__('minimal_publisher')
         self.namespace = namespace
+        self.uav_id = int(namespace[-1]) + 1
 
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
@@ -161,8 +162,6 @@ class OffboardControl(Node):
 
 
     def arm_message_callback(self, msg):
-        print("##############################")
-        print("ARM MESSAGE CALLBACK")
         self.arm_message = msg.data
         self.get_logger().info(f"Arm Message: {self.arm_message}")
 
@@ -171,29 +170,21 @@ class OffboardControl(Node):
     def arm_timer_callback(self):
         match self.current_state:
             case "IDLE":
-                print("##############################")
-                print("IDLE")
                 if(self.flightCheck and self.arm_message == True):
                     self.current_state = "ARMING"
                     self.get_logger().info(f"Arming")
 
             case "ARMING":
-                print("##############################")
-                print("ARMING")
                 if(not(self.flightCheck)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Arming, Flight Check Failed")
-                    print("1")
                 elif(self.arm_state == VehicleStatus.ARMING_STATE_ARMED and self.myCnt > 10):
                     self.current_state = "TAKEOFF"
                     self.get_logger().info(f"Arming, Takeoff")
-                    print("2")
 
                 self.arm() # send arm command
 
             case "TAKEOFF":
-                print("##############################")
-                print("TAKEOFF")
                 if(not(self.flightCheck)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Takeoff, Flight Check Failed")
@@ -206,8 +197,6 @@ class OffboardControl(Node):
 
             # wait in this state while taking off, and the moment VehicleStatus switches to Loiter state it will switch to offboard
             case "LOITER":
-                print("##############################")
-                print("LOITER")
                 if(not(self.flightCheck)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Loiter, Flight Check Failed")
@@ -218,8 +207,6 @@ class OffboardControl(Node):
                 self.arm()
 
             case "OFFBOARD":
-                print("##############################")
-                print("OFFBOARD")
                 if(not(self.flightCheck) or self.arm_state == VehicleStatus.ARMING_STATE_DISARMED or self.failsafe == True):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Offboard, Flight Check Failed")
@@ -279,7 +266,7 @@ class OffboardControl(Node):
         msg.param2 = param2
         msg.param7 = param7 # altitude value in takeoff command
         msg.command = command # command ID
-        msg.target_system = 1 # system which should execute the command
+        msg.target_system = self.uav_id # system which should execute the command
         msg.target_component = 1 # component which should execute the command, 0 for all components
         msg.source_system = 1 # system sending the command
         msg.source_component = 1 # component sending the command
@@ -289,9 +276,6 @@ class OffboardControl(Node):
 
     # receives and sets vehicle status values 
     def vehicle_status_callback(self, msg):
-        print("##############################")
-        print("VEHICLE STATUS CALLBACK")
-
         if (msg.nav_state != self.nav_state):
             self.get_logger().info(f"NAV_STATUS: {msg.nav_state}")
         
@@ -304,16 +288,10 @@ class OffboardControl(Node):
         if (msg.pre_flight_checks_pass != self.flightCheck):
             self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
 
-        print("##############################")
-        print(self.nav_state, self.arm_state, self.failsafe, self.flightCheck)
-        print(VehicleStatus.ARMING_STATE_ARMED)
-
         self.nav_state = msg.nav_state
         self.arm_state = msg.arming_state
         self.failsafe = msg.failsafe
         self.flightCheck = msg.pre_flight_checks_pass
-
-        print(self.nav_state, self.arm_state, self.failsafe, self.flightCheck)
 
     # receives Twist commands from Teleop and converts FRD -> FLU
     def offboard_velocity_callback(self, msg):
