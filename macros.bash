@@ -20,9 +20,12 @@ function remodel() {
 
 function sim() {
     local uav_number=${1:-1}
-    ros2 launch px4_offboard offboard_velocity_control.launch.py uav_number:=$uav_number
-}
+    local spawn_configuration=${2:-l}
 
+    ros2 launch px4_offboard offboard_velocity_control.launch.py \
+        uav_number:=$uav_number \
+        spawn_configuration:=$spawn_configuration
+}
 
 function kgz() {
     ps aux | grep gz | grep -v grep | awk '{print $2}' | xargs kill -9

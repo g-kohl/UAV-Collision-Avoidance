@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import sys
 import geometry_msgs.msg
-import rclpy
 import std_msgs.msg
+import rclpy
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+import sys
 
 if sys.platform == 'win32':
     import msvcrt
@@ -38,15 +38,16 @@ move_bindings = {
     '\x1b[C' : (-1, 0, 0, 0), # Right Arrow
     '\x1b[D' : ( 1, 0, 0, 0), # Left Arrow
 }
+# criar tecla pra zerar
 
-speed_binding = {
-    # 'q': (1.1, 1.1),
-    # 'z': (.9, .9),
-    # 'w': (1.1, 1),
-    # 'x': (.9, 1),
-    # 'e': (1, 1.1),
-    # 'c': (1, .9),
-}
+# speed_binding = {
+#     'q': (1.1, 1.1),
+#     'z': (.9, .9),
+#     'w': (1.1, 1),
+#     'x': (.9, 1),
+#     'e': (1, 1.1),
+#     'c': (1, .9),
+# }
 
 keys = ['w', 's', 'a', 'd', '\x1b[A', '\x1b[B]', '\x1b[C]', '\x1b[D]']
 
@@ -89,7 +90,7 @@ def main(args=None):
     rclpy.init(args=args)
 
     namespace = sys.argv[1] if len(sys.argv) > 1 else 'default_namespace'
-    node = rclpy.create_node(f'{namespace}_teleop_twist_keyboard')
+    teleop = rclpy.create_node(f'{namespace}_teleop_twist_keyboard')
 
     qos_profile = QoSProfile(
         reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -98,8 +99,8 @@ def main(args=None):
         depth=10
     )
 
-    pub = node.create_publisher(geometry_msgs.msg.Twist, f'/{namespace}/offboard_velocity_cmd', qos_profile)
-    arm_pub = node.create_publisher(std_msgs.msg.Bool, f'/{namespace}/arm_message', qos_profile)
+    velocity_publisher = teleop.create_publisher(geometry_msgs.msg.Twist, f'/{namespace}/offboard_velocity_cmd', qos_profile) # offboard velocity message
+    arm_publisher = teleop.create_publisher(std_msgs.msg.Bool, f'/{namespace}/arm_message', qos_profile) # arm/disarm message
 
     arm_toggle = False
 
@@ -132,15 +133,15 @@ def main(args=None):
                 z = 0.0
                 th = 0.0
 
-                if (key == '\x03'):
+                if key == '\x03':
                     break
 
             if key == ' ':  # ASCII value for space
                 arm_toggle = not arm_toggle
-                arm_msg = std_msgs.msg.Bool()
-                arm_msg.data = arm_toggle
+                arm_message = std_msgs.msg.Bool()
+                arm_message.data = arm_toggle
 
-                arm_pub.publish(arm_msg)
+                arm_publisher.publish(arm_message)
                 print(f"Arm toggle is now: {arm_toggle}")
 
             twist = geometry_msgs.msg.Twist()
@@ -156,7 +157,7 @@ def main(args=None):
             twist.angular.y = 0.0
             twist.angular.z = yaw_val
 
-            pub.publish(twist)
+            velocity_publisher.publish(twist)
             print("X:",twist.linear.x, "   Y:",twist.linear.y, "   Z:",twist.linear.z, "   Yaw:",twist.angular.z)
 
     except Exception as e:
@@ -172,7 +173,7 @@ def main(args=None):
         twist.angular.y = 0.0
         twist.angular.z = 0.0
 
-        pub.publish(twist)
+        velocity_publisher.publish(twist)
 
         restore_terminal_settings(settings)
 

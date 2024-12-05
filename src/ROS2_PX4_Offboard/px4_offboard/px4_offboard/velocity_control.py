@@ -354,6 +354,7 @@ class OffboardControl(Node):
             trajectory_msg.acceleration[2] = float('nan')
             trajectory_msg.yaw = float('nan')
             trajectory_msg.yawspeed = self.yaw
+            trajectory_msg.yawspeed = self.yaw
 
             self.publisher_trajectory.publish(trajectory_msg)
 

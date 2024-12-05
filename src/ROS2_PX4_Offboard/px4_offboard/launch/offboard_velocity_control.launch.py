@@ -39,9 +39,30 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
+import math
+
+
+LINE = 'l'
+SQUARE = 's'
+
+
+def get_spawn_position(spawn_configuration, uav_instance, uav_number):
+    if spawn_configuration == LINE: # UAVs in a line fomation
+        coord_x = uav_instance
+        coord_y = 0
+    
+    if spawn_configuration == SQUARE: # UAVs in a square formation
+        width = math.ceil(math.sqrt(uav_number))
+        coord_x = uav_instance % width
+        coord_y = uav_instance // width
+
+    return f"{coord_y},{coord_x}"
+
 
 def generate_uav_nodes(context):
     uav_number = int(LaunchConfiguration('uav_number').perform(context))
+    spawn_configuration = LaunchConfiguration('spawn_configuration').perform(context)
+
     nodes = []
 
     nodes.append(
@@ -54,14 +75,16 @@ def generate_uav_nodes(context):
         )
     )
 
-    for i in range(uav_number):
+    for i in range(uav_number): # create nodes for each UAV instance
+        spawn_position = get_spawn_position(spawn_configuration, i, uav_number)
+
         nodes.extend([
             Node(
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
                 executable='processes',
                 name='processes',
-                arguments=[f'{i+1}']
+                arguments=[f'{i+1}', spawn_position]
             ),
             Node(
                 package='px4_offboard',
@@ -90,13 +113,20 @@ def generate_uav_nodes(context):
 
     return nodes
 
+
 def generate_launch_description():
-    uav_number_arg = DeclareLaunchArgument(
+    uav_number_argument = DeclareLaunchArgument(
         'uav_number',
         default_value='1',
     )
 
+    spawn_configuration_argument = DeclareLaunchArgument(
+        'spawn_configuration',
+        default_value=LINE,
+    )
+
     return LaunchDescription([
-        uav_number_arg,
+        uav_number_argument,
+        spawn_configuration_argument,
         OpaqueFunction(function=generate_uav_nodes)
     ])
