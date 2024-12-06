@@ -40,7 +40,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
 import math
-
+import os
 
 LINE = 'l'
 SQUARE = 's'
@@ -62,6 +62,11 @@ def get_spawn_position(spawn_configuration, uav_instance, uav_number):
 def generate_uav_nodes(context):
     uav_number = int(LaunchConfiguration('uav_number').perform(context))
     spawn_configuration = LaunchConfiguration('spawn_configuration').perform(context)
+    mission_mode = LaunchConfiguration('mission_mode').perform(context)
+
+    current_dir = os.path.dirname(__file__)
+    file_path = os.path.join(current_dir, 'mission.txt')
+    mission_file = open(file_path, "r")
 
     nodes = []
 
@@ -77,6 +82,7 @@ def generate_uav_nodes(context):
 
     for i in range(uav_number): # create nodes for each UAV instance
         spawn_position = get_spawn_position(spawn_configuration, i, uav_number)
+        mission_steps = mission_file.readline()
 
         nodes.extend([
             Node(
@@ -106,7 +112,7 @@ def generate_uav_nodes(context):
                 namespace=f'px4_{i+1}',
                 executable='velocity_control',
                 name='velocity',
-                arguments=[f'px4_{i+1}'],
+                arguments=[f'px4_{i+1}', mission_mode, mission_steps],
                 # prefix='gnome-terminal --'
             )
         ])
@@ -125,8 +131,14 @@ def generate_launch_description():
         default_value=LINE,
     )
 
+    mission_mode_argument = DeclareLaunchArgument(
+        'mission_mode',
+        default_value='f'
+    )
+
     return LaunchDescription([
         uav_number_argument,
         spawn_configuration_argument,
+        mission_mode_argument,
         OpaqueFunction(function=generate_uav_nodes)
     ])
