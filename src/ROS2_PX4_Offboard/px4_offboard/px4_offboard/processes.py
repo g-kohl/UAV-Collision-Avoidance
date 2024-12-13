@@ -13,7 +13,7 @@ def main(args=None):
                         "MicroXRCEAgent udp4 -p 8888" + "; exec bash"]) # start the agent
     else:
         cd_command = "cd ~/PX4-Autopilot-ColAvoid && "
-        simulation_command = f"PX4_SYS_AUTOSTART=4001 PX4_GZ_MODEL_POSE={spawn_position} PX4_SIM_MODEL=gz_x500_lidar ./build/px4_sitl_default/bin/px4 -i {instance}"
+        simulation_command = f"PX4_SYS_AUTOSTART=4001 PX4_GZ_WORLD=default PX4_GZ_MODEL_POSE={spawn_position} PX4_SIM_MODEL=gz_x500_lidar ./build/px4_sitl_default/bin/px4 -i {instance}"
 
         time.sleep(5*instance)
         subprocess.run(["gnome-terminal", "--tab", "--", "bash", "-c", 

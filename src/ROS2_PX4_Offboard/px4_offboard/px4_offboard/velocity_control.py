@@ -37,7 +37,6 @@ __contact__ = "braden@arkelectron.com"
 
 import rclpy
 from rclpy.node import Node
-import numpy as np
 from rclpy.clock import Clock
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from px4_msgs.msg import ObstacleDistance
@@ -48,8 +47,9 @@ from px4_msgs.msg import VehicleCommand
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleOdometry
 from geometry_msgs.msg import Twist, Vector3
-from math import pi
 from std_msgs.msg import Bool
+from math import pi
+import numpy as np
 import sys
 
 
@@ -62,13 +62,15 @@ SPEED_LIMIT_MULTIPLIER = MAX_SPEED_LIMIT / DISTANCE_VARSPACE
 
 HALF_PI = 1.570796325
 
+DANGER_ZONE_RADIUS = 2
 
 class OffboardControl(Node):
 
-    def __init__(self, namespace='', mission_mode=False, mission_steps=[[0.0, 0.0, 0.0]]):
+    def __init__(self, namespace='', uav_number=1, mission_mode=False, mission_steps=[[0.0, 0.0, 0.0]]):
         super().__init__('minimal_publisher')
         self.namespace = namespace
         self.uav_id = int(namespace[-1]) + 1
+        self.uav_number = uav_number
 
         self.mission_mode = mission_mode
         self.mission_steps = mission_steps
@@ -82,42 +84,61 @@ class OffboardControl(Node):
         )
 
         # create subscriptions
-        self.status_sub = self.create_subscription(
+        self.status_subscription = self.create_subscription(
             VehicleStatus,
             f'/{self.namespace}/fmu/out/vehicle_status',
             self.vehicle_status_callback,
             qos_profile
         )
 
-        self.offboard_velocity_sub = self.create_subscription(
+        self.offboard_velocity_subscription = self.create_subscription(
             Twist,
             f'/{self.namespace}/offboard_velocity_cmd',
             self.offboard_velocity_callback,
             qos_profile
         )
 
-        self.attitude_sub = self.create_subscription(
+        self.attitude_subscription = self.create_subscription(
             VehicleAttitude,
             f'/{self.namespace}/fmu/out/vehicle_attitude',
             self.attitude_callback,
             qos_profile
         )
 
-        self.odometry_sub = self.create_subscription(
-            VehicleOdometry,
-            f'/{self.namespace}/fmu/out/vehicle_odometry',
-            self.odometry_callback,
-            qos_profile
-        )
+        # subscription to receive the position of every UAV
+        self.uav_positions = {}
+        self.position_subscriptions = []
 
-        self.obstacle_distance_sub = self.create_subscription(
+        for i in range(1, self.uav_number+1):
+            uav_namespace = f'px4_{i}'
+            topic_name = f'/{uav_namespace}/fmu/out/vehicle_odometry'
+
+            self.uav_positions[uav_namespace] = None
+
+            subscription = self.create_subscription(
+                VehicleOdometry,
+                topic_name,
+                lambda msg, ns=uav_namespace: self.odometry_callback(msg, ns),
+                qos_profile
+            )
+
+            self.position_subscriptions.append(subscription)
+
+        # self.odometry_sub = self.create_subscription(
+        #     VehicleOdometry,
+        #     f'/{self.namespace}/fmu/out/vehicle_odometry',
+        #     self.odometry_callback,
+        #     qos_profile
+        # )
+
+        self.obstacle_distance_subscription = self.create_subscription(
             ObstacleDistance,
             f'/{self.namespace}/fmu/out/obstacle_distance',
             self.obstacle_distance_callback,
             qos_profile
         )
 
-        self.my_bool_sub = self.create_subscription(
+        self.my_bool_subscription = self.create_subscription(
             Bool,
             f'/{self.namespace}/arm_message',
             self.arm_message_callback,
@@ -128,15 +149,13 @@ class OffboardControl(Node):
         self.publisher_offboard_mode = self.create_publisher(OffboardControlMode, f'/{self.namespace}/fmu/in/offboard_control_mode', qos_profile)
         self.publisher_velocity = self.create_publisher(Twist, f'/{self.namespace}/fmu/in/setpoint_velocity/cmd_vel_unstamped', qos_profile)
         self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_publisher_ = self.create_publisher(VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', 10)
+        self.publisher_vehicle_command = self.create_publisher(VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', 10)
 
-        # create callback function for the arm timer
-        # period is arbitrary, just should be more than 2Hz
+        # create callback function for the arm timer (period is arbitrary, just should be more than 2Hz)
         arm_timer_period = .1 # seconds
         self.arm_timer_ = self.create_timer(arm_timer_period, self.arm_timer_callback)
 
-        # create callback function for the command loop
-        # period is arbitrary, just should be more than 2Hz. Because live controls rely on this, a higher frequency is recommended
+        # create callback function for the command loop (period is arbitrary, just should be more than 2Hz)
         # commands in cmdloop_callback won't be executed if the vehicle is not in offboard mode
         timer_period = 0.02  # seconds
         self.timer = self.create_timer(timer_period, self.cmdloop_callback)
@@ -145,10 +164,10 @@ class OffboardControl(Node):
         self.arm_state = VehicleStatus.ARMING_STATE_ARMED
         self.velocity = Vector3()
         self.yaw = 0.0 # yaw value we send as command
-        self.trueYaw = 0.0 # current yaw value of drone
-        self.offboardMode = False
-        self.flightCheck = False
-        self.myCnt = 0
+        self.true_yaw = 0.0 # current yaw value of drone
+        self.offboard_mode = False
+        self.flight_check = False
+        self.my_control = 0
         self.arm_message = False
         self.failsafe = False
 
@@ -164,32 +183,26 @@ class OffboardControl(Node):
         self.current_state = "IDLE"
         self.last_state = self.current_state
 
-
-    def arm_message_callback(self, msg):
-        self.arm_message = msg.data
-        self.get_logger().info(f"Arm Message: {self.arm_message}")
-
-    # callback function that arms, takes off, and switches to offboard mode
-    # implements a finite state machine
+    # callback function that arms, takes off, and switches to offboard mode (implements a finite state machine)
     def arm_timer_callback(self):
         match self.current_state:
             case "IDLE":
-                if(self.flightCheck and self.arm_message == True):
+                if(self.flight_check and self.arm_message == True):
                     self.current_state = "ARMING"
                     self.get_logger().info(f"Arming")
 
             case "ARMING":
-                if(not(self.flightCheck)):
+                if(not(self.flight_check)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Arming, Flight Check Failed")
-                elif(self.arm_state == VehicleStatus.ARMING_STATE_ARMED and self.myCnt > 10):
+                elif(self.arm_state == VehicleStatus.ARMING_STATE_ARMED and self.my_control > 10):
                     self.current_state = "TAKEOFF"
                     self.get_logger().info(f"Arming, Takeoff")
 
                 self.arm() # send arm command
 
             case "TAKEOFF":
-                if(not(self.flightCheck)):
+                if(not(self.flight_check)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Takeoff, Flight Check Failed")
                 elif(self.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_TAKEOFF):
@@ -201,7 +214,7 @@ class OffboardControl(Node):
 
             # wait in this state while taking off, and the moment VehicleStatus switches to Loiter state it will switch to offboard
             case "LOITER":
-                if(not(self.flightCheck)):
+                if(not(self.flight_check)):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Loiter, Flight Check Failed")
                 elif(self.nav_state == VehicleStatus.NAVIGATION_STATE_AUTO_LOITER):
@@ -211,7 +224,7 @@ class OffboardControl(Node):
                 self.arm()
 
             case "OFFBOARD":
-                if(not(self.flightCheck) or self.arm_state == VehicleStatus.ARMING_STATE_DISARMED or self.failsafe == True):
+                if(not(self.flight_check) or self.arm_state == VehicleStatus.ARMING_STATE_DISARMED or self.failsafe == True):
                     self.current_state = "IDLE"
                     self.get_logger().info(f"Offboard, Flight Check Failed")
 
@@ -224,34 +237,34 @@ class OffboardControl(Node):
             self.last_state = self.current_state
             self.get_logger().info(self.current_state)
 
-        self.myCnt += 1
+        self.my_control += 1
 
 
     def state_init(self):
-        self.myCnt = 0
+        self.my_control = 0
 
 
     def state_arming(self):
-        self.myCnt = 0
+        self.my_control = 0
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
         self.get_logger().info("Arm command send")
 
 
     def state_takeoff(self):
-        self.myCnt = 0
+        self.my_control = 0
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_NAV_TAKEOFF, param1 = 1.0, param7=5.0) # param7 is altitude in meters
         self.get_logger().info("Takeoff command send")
 
 
     def state_loiter(self):
-        self.myCnt = 0
+        self.my_control = 0
         self.get_logger().info("Loiter Status")
 
 
     def state_offboard(self):
-        self.myCnt = 0
+        self.my_control = 0
         self.publish_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1., 6.)
-        self.offboardMode = True
+        self.offboard_mode = True
 
     # arms the vehicle
     def arm(self):
@@ -276,7 +289,7 @@ class OffboardControl(Node):
         msg.source_component = 1 # component sending the command
         msg.from_external = True
         msg.timestamp = int(Clock().now().nanoseconds / 1000) # time in microseconds
-        self.vehicle_command_publisher_.publish(msg)
+        self.publisher_vehicle_command.publish(msg)
 
     # receives and sets vehicle status values
     def vehicle_status_callback(self, msg):
@@ -289,87 +302,33 @@ class OffboardControl(Node):
         if (msg.failsafe != self.failsafe):
             self.get_logger().info(f"FAILSAFE: {msg.failsafe}")
 
-        if (msg.pre_flight_checks_pass != self.flightCheck):
-            self.get_logger().info(f"FlightCheck: {msg.pre_flight_checks_pass}")
+        if (msg.pre_flight_checks_pass != self.flight_check):
+            self.get_logger().info(f"Flight check: {msg.pre_flight_checks_pass}")
 
         self.nav_state = msg.nav_state
         self.arm_state = msg.arming_state
         self.failsafe = msg.failsafe
-        self.flightCheck = msg.pre_flight_checks_pass
+        self.flight_check = msg.pre_flight_checks_pass
 
     # receives Twist commands from Teleop and converts FRD -> FLU
     def offboard_velocity_callback(self, msg):
         self.velocity.x = -msg.linear.y
         self.velocity.y = msg.linear.x
 
-        # Z (FLU) is -Z (FRD)
-        self.velocity.z = -msg.linear.z
+        self.velocity.z = -msg.linear.z # Z (FLU) is -Z (FRD)
 
-        # A conversion for angular z is done in the attitude_callback function(it's the '-' in front of self.trueYaw)
-        self.yaw = msg.angular.z
+        self.yaw = msg.angular.z # conversion for angular z is done in the attitude_callback function(it's the '-' in front of self.true_yaw)
 
     # receives current trajectory values from drone and grabs the yaw value of the orientation
     def attitude_callback(self, msg):
         orientation_q = msg.q
 
-        # trueYaw is the drones current yaw value
-        self.trueYaw = -(np.arctan2(2.0*(orientation_q[3]*orientation_q[0] + orientation_q[1]*orientation_q[2]),
+        # true_yaw is the drones current yaw value
+        self.true_yaw = -(np.arctan2(2.0*(orientation_q[3]*orientation_q[0] + orientation_q[1]*orientation_q[2]),
                                   1.0 - 2.0*(orientation_q[0]*orientation_q[0] + orientation_q[1]*orientation_q[1])))
-
-    # publishes offboard control modes and velocity as trajectory setpoints
-    def cmdloop_callback(self):
-        if(self.offboardMode == True):
-            # publish offboard control modes
-            offboard_msg = OffboardControlMode()
-            offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-            offboard_msg.position = False
-            offboard_msg.velocity = True
-            offboard_msg.acceleration = False
-            self.publisher_offboard_mode.publish(offboard_msg)
-
-            # print("################")
-            # print(f"N: {self.odometry.position[0]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
-            # print(f"E: {self.odometry.position[1]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
-            # print(f"D: {self.odometry.position[2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-            # print(f"velocity: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
-
-            # compute velocity in the direction of the current mission
-            if self.mission_mode:
-                arrived = self.velocity_to_destiny()
-
-                if arrived:
-                    self.mission_index += 1
-                    arrived = False
-
-            # process LiDAR data and, with it, avoid obstacles
-            safe_velocity = self.avoid_obstacles()
-
-            # compute velocity in the world frame
-            cos_yaw = np.cos(self.trueYaw)
-            sin_yaw = np.sin(self.trueYaw)
-            velocity_world_x = (safe_velocity.x * cos_yaw - safe_velocity.y * sin_yaw)
-            velocity_world_y = (safe_velocity.x * sin_yaw + safe_velocity.y * cos_yaw)
-
-            # create and publish TrajectorySetpoint message with NaN values for position and acceleration
-            trajectory_msg = TrajectorySetpoint()
-            trajectory_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-            trajectory_msg.velocity[0] = velocity_world_x
-            trajectory_msg.velocity[1] = velocity_world_y
-            trajectory_msg.velocity[2] = self.velocity.z
-            trajectory_msg.position[0] = float('nan')
-            trajectory_msg.position[1] = float('nan')
-            trajectory_msg.position[2] = float('nan')
-            trajectory_msg.acceleration[0] = float('nan')
-            trajectory_msg.acceleration[1] = float('nan')
-            trajectory_msg.acceleration[2] = float('nan')
-            trajectory_msg.yaw = float('nan')
-            trajectory_msg.yawspeed = self.yaw
-            trajectory_msg.yawspeed = self.yaw
-
-            self.publisher_trajectory.publish(trajectory_msg)
-
-
-    def odometry_callback(self, msg):
+        
+    # receives odometry values for each UAV
+    def odometry_callback(self, msg, namespace):
         """
         Odometry message fields:
             timestamp: int
@@ -385,9 +344,9 @@ class OffboardControl(Node):
             velocity_variance: float[3]
         """
 
-        self.odometry = msg
-
-
+        self.uav_positions[namespace] = (msg.position[1], msg.position[0], msg.position[2])
+    
+    # receives obstacle distances values
     def obstacle_distance_callback(self, msg):
         """
         Obstacle distance message fields:
@@ -403,71 +362,163 @@ class OffboardControl(Node):
 
         self.obstacle_distance = msg
 
+    def arm_message_callback(self, msg):
+        self.arm_message = msg.data
+        self.get_logger().info(f"Arm Message: {self.arm_message}")
+
+    # publishes offboard control modes and velocity as trajectory setpoints
+    def cmdloop_callback(self):
+        if(self.offboard_mode == True):
+            # publish offboard control modes
+            offboard_message = OffboardControlMode()
+            offboard_message.timestamp = int(Clock().now().nanoseconds / 1000)
+            offboard_message.position = False
+            offboard_message.velocity = True
+            offboard_message.acceleration = False
+            self.publisher_offboard_mode.publish(offboard_message)
+
+            # compute velocity in the direction of the current mission step
+            if self.mission_mode:
+                arrived = self.velocity_to_destiny()
+
+                if arrived:
+                    self.mission_index += 1
+                    arrived = False
+
+                if self.mission_index >= len(self.mission_steps): # end of mission
+                    # self.mission_mode = False
+                    self.mission_index -= 1
+
+            horizontal_safe_velocity = self.avoid_obstacles()
+            safe_velocity = self.avoid_uav(horizontal_safe_velocity)
+
+            # compute velocity in the world frame
+            cos_yaw = np.cos(self.true_yaw)
+            sin_yaw = np.sin(self.true_yaw)
+            velocity_world_x = (safe_velocity.x * cos_yaw - safe_velocity.y * sin_yaw)
+            velocity_world_y = (safe_velocity.x * sin_yaw + safe_velocity.y * cos_yaw)
+
+            # create and publish TrajectorySetpoint message with NaN values for position and acceleration
+            trajectory_message = TrajectorySetpoint()
+            trajectory_message.timestamp = int(Clock().now().nanoseconds / 1000)
+            trajectory_message.velocity[0] = velocity_world_x
+            trajectory_message.velocity[1] = velocity_world_y
+            trajectory_message.velocity[2] = safe_velocity.z
+            trajectory_message.position[0] = float('nan')
+            trajectory_message.position[1] = float('nan')
+            trajectory_message.position[2] = float('nan')
+            trajectory_message.acceleration[0] = float('nan')
+            trajectory_message.acceleration[1] = float('nan')
+            trajectory_message.acceleration[2] = float('nan')
+            trajectory_message.yaw = float('nan')
+            trajectory_message.yawspeed = self.yaw
+            trajectory_message.yawspeed = self.yaw
+
+            print("=====================")
+            print(f"N: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
+            print(f"E: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
+            print(f"D: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
+            print(f"velocity: {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
+
+            self.publisher_trajectory.publish(trajectory_message)
+
     def velocity_to_destiny(self):
-        error_x = self.odometry.position[1] - self.mission_steps[self.mission_index][0]
-        if abs(error_x) > 0.25:
+        error_x = self.uav_positions[self.namespace][0] - self.mission_steps[self.mission_index][0]
+        if abs(error_x) > 0.1:
             self.velocity.x = 0.5 if error_x > 0 else -0.5
         else:
             self.velocity.x = 0.05
 
-        error_y = self.odometry.position[0] - self.mission_steps[self.mission_index][1]
-        if abs(error_y) > 0.25:
+        error_y = self.uav_positions[self.namespace][1] - self.mission_steps[self.mission_index][1]
+        if abs(error_y) > 0.1:
             self.velocity.y = -0.5 if error_y > 0 else 0.5
         else:
             self.velocity.y = 0.05
 
-        error_z = self.odometry.position[2] - self.mission_steps[self.mission_index][2]
-        if abs(error_z) > 0.25:
+        error_z = self.uav_positions[self.namespace][2] - self.mission_steps[self.mission_index][2]
+        if abs(error_z) > 0.1:
             self.velocity.z = -0.5 if error_z > 0 else 0.5
         else:
             self.velocity.z = 0.05
 
-        return abs(error_x) < 0.25 and abs(error_y) < 0.25 and abs(error_z) < 0.25
+        return abs(error_x) < 0.1 and abs(error_y) < 0.1 and abs(error_z) < 0.1
 
     def avoid_obstacles(self):
         velocity = Vector2(-self.velocity.x, -self.velocity.y) * 100
         horizontal_speed = np.sqrt(velocity.x**2 + velocity.y**2)
-        vel_dir = np.arctan2(velocity.y, velocity.x)
-        dir_increment = deg2rad(self.obstacle_distance.increment)
-        dir_offset = deg2rad(self.obstacle_distance.angle_offset)
+        velocity_direction = np.arctan2(velocity.y, velocity.x)
+        increment_direction = deg2rad(self.obstacle_distance.increment)
+        offset_direction = deg2rad(self.obstacle_distance.angle_offset)
 
-        # For each distance measurement (in cm)
-        for i, distance in enumerate(self.obstacle_distance.distances): # len(distances) = 72
-            # If the distance is higher than the safe distance, ignore it
-            # If the distance is higher than the maximum distance, it acts like a flag
+        # for each distance measurement (in cm)
+        for i, distance in enumerate(self.obstacle_distance.distances):
+            # if the distance is higher than the safe distance, ignore it
+            # if the distance is higher than the maximum distance, it acts like a flag
             if distance > DISTANCE_SAFE:
-                # 65535 marks the end of the valid data
-                if distance == 65535:
+                if distance == 65535: # 65535 marks the end of the valid data
                     break
 
-                # Anything that is greater than the safe distance is ignored
+                continue # anything that is greater than the safe distance is ignored
+
+            ray_direction = i * increment_direction + offset_direction # direction of the ray relative to the drone's front
+            ray_velocity_angle = ray_direction - velocity_direction # ray-velocity angle (angle with the drone's velocity)
+
+            # ignore if the drone is not going toward that direction at all
+            if (ray_velocity_angle < -HALF_PI or ray_velocity_angle > HALF_PI):
                 continue
 
-            ray_dir = i * dir_increment + dir_offset # Direction of the ray relative to the drone's front
-            rv_angle = ray_dir - vel_dir # ray-velocity angle (angle with the drone's velocity)
+            direction_speed_limit = (distance - DISTANCE_TOOCLOSE) * SPEED_LIMIT_MULTIPLIER # individual speed limit for the direction in question
+            projected_speed = horizontal_speed * np.cos(ray_velocity_angle) # projected speed of the drone in the direction of the ray
+            exceeding_speed = projected_speed - direction_speed_limit # speed over the speed limit in the direction
 
-            # Ignore if the drone is not going toward that direction at all
-            if (rv_angle < -HALF_PI or rv_angle > HALF_PI):
-                continue
+            if exceeding_speed <= 0:
+                continue # if the projected speed is below the speed limit, it does not need to be adjusted
 
-            dir_speed_limit = (distance - DISTANCE_TOOCLOSE) * SPEED_LIMIT_MULTIPLIER # Individual speed limit for the direction in question
-            projected_speed = horizontal_speed * np.cos(rv_angle) # Projected speed of the drone in the direction of the ray
-            exceeding_speed = projected_speed - dir_speed_limit # Speed over the speed limit in the direction
-
-            if (exceeding_speed <= 0):
-                continue # If the projected speed is below the speed limit, it does not need to be adjusted
-
-            # The speed is not safe. Set the speed in that direction to the speed limit.
-            direction_vector = Vector2(np.cos(ray_dir), np.sin(ray_dir)) # Unit vector in the direction of the ray
+            # the speed is not safe
+            # set the speed in that direction to the speed limit
+            direction_vector = Vector2(np.cos(ray_direction), np.sin(ray_direction)) # unit vector in the direction of the ray
             exceeding_velocity = direction_vector * exceeding_speed
 
-            # Adjust velocity
+            # adjust velocity
             velocity -= exceeding_velocity
             horizontal_speed = np.sqrt(velocity.x**2 + velocity.y**2)
-            vel_dir = np.arctan2(velocity.y, velocity.x)
+            velocity_direction = np.arctan2(velocity.y, velocity.x)
 
-        # Update velocity
+        # update velocity
         return velocity * -0.01
+    
+    def avoid_uav(self, horizontal_velocity):
+        velocity = Vector3()
+        velocity.x = horizontal_velocity.x
+        velocity.y = horizontal_velocity.y
+        velocity.z = self.velocity.z
+
+        uav_position = self.uav_positions[self.namespace]
+
+        for uav in self.uav_positions:
+            if is_in_danger_zone(uav_position, self.uav_positions[uav]) and self.namespace != uav:
+                velocity.x += 0.5 / (uav_position[0] - self.uav_positions[uav][0])
+                velocity.y += 0.5 / (uav_position[1] - self.uav_positions[uav][1])
+                velocity.z += 0.5 / (uav_position[2] - self.uav_positions[uav][2])
+
+                print("INTRUDER DETECTED")
+
+        if velocity.x > 0.5:
+            velocity.x = 0.5
+        elif velocity.x < -0.5:
+            velocity.x = -0.5
+
+        if velocity.y > 0.5:
+            velocity.y = 0.5
+        elif velocity.y < -0.5:
+            velocity.y = -0.5
+
+        if velocity.z > 0.5:
+            velocity.z = 0.5
+        elif velocity.z < -0.5:
+            velocity.z = -0.5
+
+        return velocity
 
 
 class Vector2:
@@ -491,6 +542,12 @@ class Vector2:
 def deg2rad(deg: float):
     return deg * pi / 180.0
 
+def is_in_danger_zone(intruder_uav, reference_uav):
+    if np.sqrt((reference_uav[0] - intruder_uav[0])**2 + (reference_uav[1] - intruder_uav[1])**2 + (reference_uav[2] - intruder_uav[2])**2) < DANGER_ZONE_RADIUS:
+        return True
+    
+    return False
+
 
 def get_steps(text):
     mission_steps = []
@@ -498,7 +555,6 @@ def get_steps(text):
 
     for s in steps:
         coordinates = s.split(",")
-
         coordinates = [float(c) for c in coordinates]
 
         mission_steps.append(coordinates)
@@ -510,12 +566,13 @@ def main(args=None):
     rclpy.init(args=args)
 
     namespace = sys.argv[1] if len(sys.argv) > 1 else 'default_namespace'
-    mission_mode_text = sys.argv[2] if len(sys.argv) > 2 else 'f'
+    uav_number = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    mission_mode_text = sys.argv[3] if len(sys.argv) > 3 else 'f'
     mission_mode = True if mission_mode_text == 't' else False
-    mission_steps_text = sys.argv[3] if len(sys.argv) > 3 else "0.0,0.0,0.0"
+    mission_steps_text = sys.argv[4] if len(sys.argv) > 4 else "0.0,0.0,0.0"
     mission_steps = get_steps(mission_steps_text)
 
-    offboard_control = OffboardControl(namespace, mission_mode, mission_steps)
+    offboard_control = OffboardControl(namespace, uav_number, mission_mode, mission_steps)
 
     rclpy.spin(offboard_control)
 

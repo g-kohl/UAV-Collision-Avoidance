@@ -64,13 +64,13 @@ def generate_uav_nodes(context):
     spawn_configuration = LaunchConfiguration('spawn_configuration').perform(context)
     mission_mode = LaunchConfiguration('mission_mode').perform(context)
 
-    current_dir = os.path.dirname(__file__)
-    file_path = os.path.join(current_dir, 'mission.txt')
-    mission_file = open(file_path, "r")
+    current_directory = os.path.dirname(__file__)
+    mission_file_path = os.path.join(current_directory, 'mission.txt')
+    mission_file = open(mission_file_path, "r")
 
     nodes = []
 
-    nodes.append(
+    nodes.append( # create node to start the simulation
         Node(
             package='px4_offboard',
             namespace='px4_offboard',
@@ -82,7 +82,11 @@ def generate_uav_nodes(context):
 
     for i in range(uav_number): # create nodes for each UAV instance
         spawn_position = get_spawn_position(spawn_configuration, i, uav_number)
-        mission_steps = mission_file.readline()
+
+        if mission_mode == 't':
+            mission_steps = mission_file.readline()
+        else:
+            mission_steps = "0.0,0.0,0.0"
 
         nodes.extend([
             Node(
@@ -112,8 +116,8 @@ def generate_uav_nodes(context):
                 namespace=f'px4_{i+1}',
                 executable='velocity_control',
                 name='velocity',
-                arguments=[f'px4_{i+1}', mission_mode, mission_steps],
-                # prefix='gnome-terminal --'
+                arguments=[f'px4_{i+1}', f'{uav_number}', mission_mode, mission_steps],
+                prefix='gnome-terminal --'
             )
         ])
 

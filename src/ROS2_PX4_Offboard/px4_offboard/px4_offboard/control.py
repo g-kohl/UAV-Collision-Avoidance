@@ -89,7 +89,7 @@ def main(args=None):
 
     rclpy.init(args=args)
 
-    namespace = sys.argv[1] if len(sys.argv) > 1 else 'default_namespace'
+    namespace = sys.argv[1] if len(sys.argv) > 1 else 'px4_1'
     teleop = rclpy.create_node(f'{namespace}_teleop_twist_keyboard')
 
     qos_profile = QoSProfile(
@@ -117,6 +117,7 @@ def main(args=None):
     yaw_val = 0.0
 
     try:
+        print(f'UAV Namespace: {namespace}')
         print(CONTROL_MESSAGES)
 
         while True:
