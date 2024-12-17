@@ -63,6 +63,9 @@ SPEED_LIMIT_MULTIPLIER = MAX_SPEED_LIMIT / DISTANCE_VARSPACE
 HALF_PI = 1.570796325
 
 DANGER_ZONE_RADIUS = 2
+MAX_SPEED = 1.0
+MIN_SPEED = 0.05
+MISSION_TOLERANCE = 0.25
 
 class OffboardControl(Node):
 
@@ -123,13 +126,6 @@ class OffboardControl(Node):
             )
 
             self.position_subscriptions.append(subscription)
-
-        # self.odometry_sub = self.create_subscription(
-        #     VehicleOdometry,
-        #     f'/{self.namespace}/fmu/out/vehicle_odometry',
-        #     self.odometry_callback,
-        #     qos_profile
-        # )
 
         self.obstacle_distance_subscription = self.create_subscription(
             ObstacleDistance,
@@ -414,34 +410,36 @@ class OffboardControl(Node):
             trajectory_message.yawspeed = self.yaw
             trajectory_message.yawspeed = self.yaw
 
-            print("=====================")
+            print("=====================", self.namespace)
             print(f"N: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
             print(f"E: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
             print(f"D: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-            print(f"velocity: {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
+            print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
+            print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
+            print(f"avoid uav:           {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
 
             self.publisher_trajectory.publish(trajectory_message)
 
     def velocity_to_destiny(self):
         error_x = self.uav_positions[self.namespace][0] - self.mission_steps[self.mission_index][0]
-        if abs(error_x) > 0.1:
-            self.velocity.x = 0.5 if error_x > 0 else -0.5
+        if abs(error_x) > MISSION_TOLERANCE:
+            self.velocity.x = MAX_SPEED if error_x > 0 else -MAX_SPEED
         else:
-            self.velocity.x = 0.05
+            self.velocity.x = MIN_SPEED
 
         error_y = self.uav_positions[self.namespace][1] - self.mission_steps[self.mission_index][1]
-        if abs(error_y) > 0.1:
-            self.velocity.y = -0.5 if error_y > 0 else 0.5
+        if abs(error_y) > MISSION_TOLERANCE:
+            self.velocity.y = -MAX_SPEED if error_y > 0 else MAX_SPEED
         else:
-            self.velocity.y = 0.05
+            self.velocity.y = MIN_SPEED
 
         error_z = self.uav_positions[self.namespace][2] - self.mission_steps[self.mission_index][2]
-        if abs(error_z) > 0.1:
-            self.velocity.z = -0.5 if error_z > 0 else 0.5
+        if abs(error_z) > MISSION_TOLERANCE:
+            self.velocity.z = -MAX_SPEED if error_z > 0 else MAX_SPEED
         else:
-            self.velocity.z = 0.05
+            self.velocity.z = MIN_SPEED
 
-        return abs(error_x) < 0.1 and abs(error_y) < 0.1 and abs(error_z) < 0.1
+        return abs(error_x) < MISSION_TOLERANCE and abs(error_y) < MISSION_TOLERANCE and abs(error_z) < MISSION_TOLERANCE
 
     def avoid_obstacles(self):
         velocity = Vector2(-self.velocity.x, -self.velocity.y) * 100
@@ -497,26 +495,26 @@ class OffboardControl(Node):
 
         for uav in self.uav_positions:
             if is_in_danger_zone(uav_position, self.uav_positions[uav]) and self.namespace != uav:
-                velocity.x += 0.5 / (uav_position[0] - self.uav_positions[uav][0])
-                velocity.y += 0.5 / (uav_position[1] - self.uav_positions[uav][1])
-                velocity.z += 0.5 / (uav_position[2] - self.uav_positions[uav][2])
+                velocity.x += MAX_SPEED / (uav_position[0] - self.uav_positions[uav][0])
+                velocity.y += MAX_SPEED / (uav_position[1] - self.uav_positions[uav][1])
+                velocity.z += MAX_SPEED / (uav_position[2] - self.uav_positions[uav][2])
 
                 print("INTRUDER DETECTED")
 
-        if velocity.x > 0.5:
-            velocity.x = 0.5
-        elif velocity.x < -0.5:
-            velocity.x = -0.5
+        if velocity.x > MAX_SPEED:
+            velocity.x = MAX_SPEED
+        elif velocity.x < -MAX_SPEED:
+            velocity.x = -MAX_SPEED
 
-        if velocity.y > 0.5:
-            velocity.y = 0.5
-        elif velocity.y < -0.5:
-            velocity.y = -0.5
+        if velocity.y > MAX_SPEED:
+            velocity.y = MAX_SPEED
+        elif velocity.y < -MAX_SPEED:
+            velocity.y = -MAX_SPEED
 
-        if velocity.z > 0.5:
-            velocity.z = 0.5
-        elif velocity.z < -0.5:
-            velocity.z = -0.5
+        if velocity.z > MAX_SPEED:
+            velocity.z = MAX_SPEED
+        elif velocity.z < -MAX_SPEED:
+            velocity.z = -MAX_SPEED
 
         return velocity
 

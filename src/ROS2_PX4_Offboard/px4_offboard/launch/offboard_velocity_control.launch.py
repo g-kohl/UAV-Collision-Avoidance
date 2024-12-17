@@ -56,7 +56,7 @@ def get_spawn_position(spawn_configuration, uav_instance, uav_number):
         coord_x = uav_instance % width
         coord_y = uav_instance // width
 
-    return f"{coord_y},{coord_x}"
+    return f"{coord_y*3},{coord_x*3}"
 
 
 def generate_uav_nodes(context):
