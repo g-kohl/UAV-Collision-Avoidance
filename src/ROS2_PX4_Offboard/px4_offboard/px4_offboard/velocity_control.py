@@ -79,6 +79,8 @@ class OffboardControl(Node):
         self.mission_steps = mission_steps
         self.mission_index = 0
 
+        self.cmdloop_control = 0
+
         qos_profile = QoSProfile(
             reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
             durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL,
@@ -365,6 +367,8 @@ class OffboardControl(Node):
     # publishes offboard control modes and velocity as trajectory setpoints
     def cmdloop_callback(self):
         if(self.offboard_mode == True):
+            self.cmdloop_control += 1
+
             # publish offboard control modes
             offboard_message = OffboardControlMode()
             offboard_message.timestamp = int(Clock().now().nanoseconds / 1000)
@@ -410,13 +414,15 @@ class OffboardControl(Node):
             trajectory_message.yawspeed = self.yaw
             trajectory_message.yawspeed = self.yaw
 
-            print("=====================", self.namespace)
-            print(f"N: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
-            print(f"E: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
-            print(f"D: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-            print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
-            print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
-            print(f"avoid uav:           {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
+            if self.cmdloop_control % 50 == 0:
+                print("=====================", self.namespace)
+                print(f"E/x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
+                print(f"N/y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
+                print(f"D/z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
+                print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
+                print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
+                print(f"avoid uav:           {safe_velocity.x:.2f} {safe_velocity.y:.2f} {safe_velocity.z:.2f}")
+                print(f"final:               {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
 
             self.publisher_trajectory.publish(trajectory_message)
 
@@ -493,28 +499,18 @@ class OffboardControl(Node):
 
         uav_position = self.uav_positions[self.namespace]
 
-        for uav in self.uav_positions:
-            if is_in_danger_zone(uav_position, self.uav_positions[uav]) and self.namespace != uav:
-                velocity.x += MAX_SPEED / (uav_position[0] - self.uav_positions[uav][0])
-                velocity.y += MAX_SPEED / (uav_position[1] - self.uav_positions[uav][1])
-                velocity.z += MAX_SPEED / (uav_position[2] - self.uav_positions[uav][2])
+        for other_uav in self.uav_positions:
+            if is_in_danger_zone(uav_position, self.uav_positions[other_uav]) and other_uav != self.namespace:
+                velocity.x -= MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+                velocity.y += MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+                velocity.z += MAX_SPEED / correct_distance(uav_position[2], self.uav_positions[other_uav][2])
 
-                print("INTRUDER DETECTED")
+                if self.cmdloop_control % 50 == 0:
+                    print("INTRUDER DETECTED")
 
-        if velocity.x > MAX_SPEED:
-            velocity.x = MAX_SPEED
-        elif velocity.x < -MAX_SPEED:
-            velocity.x = -MAX_SPEED
-
-        if velocity.y > MAX_SPEED:
-            velocity.y = MAX_SPEED
-        elif velocity.y < -MAX_SPEED:
-            velocity.y = -MAX_SPEED
-
-        if velocity.z > MAX_SPEED:
-            velocity.z = MAX_SPEED
-        elif velocity.z < -MAX_SPEED:
-            velocity.z = -MAX_SPEED
+        velocity.x = correct_velocity(velocity.x)
+        velocity.y = correct_velocity(velocity.y)
+        velocity.z = correct_velocity(velocity.z)
 
         return velocity
 
@@ -540,11 +536,27 @@ class Vector2:
 def deg2rad(deg: float):
     return deg * pi / 180.0
 
-def is_in_danger_zone(intruder_uav, reference_uav):
+
+def is_in_danger_zone(reference_uav, intruder_uav):
     if np.sqrt((reference_uav[0] - intruder_uav[0])**2 + (reference_uav[1] - intruder_uav[1])**2 + (reference_uav[2] - intruder_uav[2])**2) < DANGER_ZONE_RADIUS:
         return True
     
     return False
+
+def correct_velocity(velocity):
+    if velocity > MAX_SPEED:
+        return MAX_SPEED
+    
+    if velocity < -MAX_SPEED:
+        return -MAX_SPEED
+    
+    return velocity
+
+
+def correct_distance(reference, intruder):
+    distance = reference - intruder
+
+    return distance if distance != 0 else 0.01
 
 
 def get_steps(text):
