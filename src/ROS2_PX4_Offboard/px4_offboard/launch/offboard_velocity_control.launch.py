@@ -45,13 +45,15 @@ import os
 LINE = 'l'
 SQUARE = 's'
 
+TRUE = 't'
+FALSE = 'f'
+
 
 def get_spawn_position(spawn_configuration, uav_instance, uav_number):
     if spawn_configuration == LINE: # UAVs in a line fomation
         coord_x = uav_instance
         coord_y = 0
-    
-    if spawn_configuration == SQUARE: # UAVs in a square formation
+    elif spawn_configuration == SQUARE: # UAVs in a square formation
         width = math.ceil(math.sqrt(uav_number))
         coord_x = uav_instance % width
         coord_y = uav_instance // width
@@ -83,7 +85,7 @@ def generate_uav_nodes(context):
     for i in range(uav_number): # create nodes for each UAV instance
         spawn_position = get_spawn_position(spawn_configuration, i, uav_number)
 
-        if mission_mode == 't':
+        if mission_mode == TRUE:
             mission_steps = mission_file.readline()
         else:
             mission_steps = "0.0,0.0,0.0"
@@ -137,7 +139,7 @@ def generate_launch_description():
 
     mission_mode_argument = DeclareLaunchArgument(
         'mission_mode',
-        default_value='f'
+        default_value=FALSE
     )
 
     return LaunchDescription([

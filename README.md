@@ -1,3 +1,7 @@
+# Descrição do projeto
+
+Esse sistema executa uma simulação de controle de múltiplos drones. É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas). A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si). Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
+
 # Como utilizar o projeto
 
 ## Configuração da toolchain
@@ -22,9 +26,9 @@ Recomenda-se seguir os passos a seguir à risca caso não tenha certeza do que e
 
 Certifique-se de que a versão de `python3` resolvido pelo `PATH` é o Python 3.10.
 
-    ```sh
-    python3 --version
-    ```
+```sh
+python3 --version
+```
 
     - Caso não seja, instale o Python 3.10 e troque o Python que é resolvido de `python3` no `PATH` 
 
@@ -74,6 +78,7 @@ foi deprecado nas versões mais novas de `setuptools`.
 Às vezes também é necessário fazer downgrade do `empy`.
 Para garantir que isso não será um problema, faça os dois.
 Note que é necessário ter o `pip` instalado (disponível no *apt*).
+
 ```sh
 sudo apt install pip # Se não tiver ainda
 
@@ -105,6 +110,7 @@ O [repositório oficial do PX4-Autopilot](https://github.com/PX4/PX4-Autopilot.g
 Então este repositório utiliza uma versão customizada do repositório
 
 Baixar o repositório personalizado do PX4:
+
 ```sh
 cd
 git clone https://github.com/felipebarichello/PX4-Autopilot-ColAvoid.git --recursive
@@ -116,6 +122,7 @@ Alternativamente, pode-se alterar o script
 para utilizar o caminho desejado.
 
 Em seguida, execute o seguinte *script* para instalar o PX4, dentro do diretório baixado:
+
 ```sh
 bash Tools/setup/ubuntu.sh
 ```
@@ -128,6 +135,7 @@ Antes de prosseguir, perceba que atualmente, aparentemente para todos,
 está ocorrendo um erro na primeira vez que a simulação é executada (ver [**# Problemas comuns > O simulador abre mas está vazio**](#o-simulador-abre-mas-está-vazio))
 
 Caso nenhum erro ocorra, vá para o local em que colocou este repositório e execute os comandos:
+
 ```sh
 source ./macros.bash
 setros && buildall && sim
@@ -135,7 +143,7 @@ setros && buildall && sim
 e verifique se o comportamento é compatível com a descrição a seguir **(não feche as janelas antes de ler a seção [**# Fechar os programas**](#fechar-os-programas)**:
 
 - Duas novas abas de terminal serão abertas na janela atual, além de uma nova janela:
-    1. **PX4 Shell**: A aba onde o comando [`sim`](#sim) foi usado terá outputs como: `[velocity_control-4] [INFO] [1710362381.891866260] [px4_offboard.velocity]: FlightCheck: True`
+    1. **PX4 Shell**: A aba onde o comando [`sim`](#sim) foi usado. Terá outputs como: `[velocity_control-4] [INFO] [1710362381.891866260] [px4_offboard.velocity]: FlightCheck: True`
     2. As novas abas:
         1. **Cliente DDS**: Uma das abas frequentemente imprime a seguinte linha: `INFO  [uxrce_dds_client] time sync converged`
         2. **SITL**: A outra aba é mais colorida (se seu terminal suporta cores) e imprime mensagens que começam com algo semelhante a `[1710362261.223419] info     | ProxyClient.cpp`
@@ -168,15 +176,18 @@ Deve ser resolvido fechando todos os processos e executando novamente o comando 
 
 É um problema causado pelo repositório oficial do Github.
 Para solucionar, deve-se criar uma *tag* de *commit* no *commit* do repositório do `PX4-Autopilot-ColAvoid`:
+
 ```sh
 git tag v1.14.0-dev
 ```
+
 Daí para frente, lembre-se de, em todo novo *commit* do repositório, adicionar a *tag* e fazer um `git push --all` em vez de um `git push` ordinário.
 Também pode-se fazer um `git push --tags` para fazer o *push* apenas das *tags*
 
 ### ninja: error: unknown target
 
 Caso o erro seja algo semelhante a `ninja: error: unknown target`, tente executar os seguintes comandos no repositório do PX4:
+
 ```sh
 make clean
 make distclean
@@ -188,11 +199,18 @@ e então repita o processo.
 Pode ser que já haja alguma instância do Gazebo rodando em segundo plano.
 Isso geralmente é gerado por tentar fechar o programa através da janela, ao invés do terminal.
 Para resolver o problema, execute
+
 ```sh
 kgz
 ```
+
 para eliminar os processos do Gazebo.
 Esse comando é uma função definida em [macros.bash](./macros.bash)
+
+## Progamando missões
+
+O arquivo missions.txt contém a descrição da missão que será seguida pelos drones. Cada linha do arquivo é destinada para um drone (1ª linha: missão do primeiro drone, 2ª linha: segundo drone, ...). A linha é formada por um conjunto de coordenadas. As coordenadas são separadas por ';' enquanto as componentes são separadas por ','. Cada componente (x, y e z) é um número de ponto flutuante (de preferência uma casa decimal). Neste repositório há um exemplo de como deve ser o arquivo.
+Aviso: no Gazebo o eixo z está invertido, ou seja, para o drone subir, deve-se especificar uma componente z negativa.
 
 ## Estrutura do projeto
 
@@ -246,16 +264,37 @@ O comando `remodel` faz essa cópia
 #### `sim`
 
 Executa todos os programas necessários para a simulação de um drone no sistema PX4/Gazebo/ROS, inclusive com controle pelo teclado.
-Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos. Se quiser executar a simulação com mais de um drone, é preciso especificar o número desejado. Por exemplo, para simular três drones:
+Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos. A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo. Porém é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
+
+- uav_number: número de drones na simulação
+- spawn_configuration: caractere indicando a formação em que múltiplos drones serão gerados:
+    1. 'l' (line): drones serão gerados em linha (um do lado do outro)
+    2. 's' (square): drones serão gerados dentro de um quadrado (ex: 4 drones formam um quadrado de lado 2, 5 drones ficam dentro de um quadrado de lado 3)
+- mission_mode: caractere indicando se o drone seguirá a missão predefinida:
+    1. 't' (true): drones seguem a missão proposta
+    2. 'f' (false): drones seguem comandos do teclado
+    
+Exemplo de simulação com 3 drones, formação em quadrado e seguindo a missão:
+
 ```sh
-sim 3
+sim 3 s t
 ```
+
+Por padrão só um drone é gerado, a formação é em linha e o drone segue comandos do teclado.
+
+### `loadmission`
+
+Copia o arquivo descrevendo a missão para o diretório em que o código pode acessá-lo. Deve ser executado sempre que o arquivo for modificado.
 
 #### `kgz`
 
 Fecha todos os processos do Gazebo que estão rodando em segundo plano.
 Elimina alguns erros que podem ocorrer ao tentar abrir o Gazebo,
 conforme descrito na seção [# Problemas comuns > Erro na abertura do Gazebo](#erro-na-abertura-do-gazebo).
+
+### mission.txt
+
+Onde as coordenadas da missão devem ser especificadas
 
 ### [src/](./src/)
 
@@ -278,6 +317,6 @@ As funções [`setup`](#setup), [`build`](#build) e [`buildall`](#buildall) do s
 
 Todos os arquivos dentro de [`build`](./build/), [`install`](./install/) e [`log`](./log/) são gerados automaticamente. Fora o `install/setup.bash`, eles geralmente não são muito úteis para uso manual.
 
-## Referências
+# Referências
 
 Esse repositório foi construído a partir [deste](https://github.com/felipebarichello/quad-col-avoid.git)
