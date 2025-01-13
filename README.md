@@ -1,6 +1,9 @@
 # Descrição do projeto
 
-Esse sistema executa uma simulação de controle de múltiplos drones. É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas). A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si). Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
+Esse sistema executa uma simulação de controle de múltiplos drones.
+É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas).
+A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si).
+Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
 
 # Como utilizar o projeto
 
@@ -30,22 +33,22 @@ Certifique-se de que a versão de `python3` resolvido pelo `PATH` é o Python 3.
 python3 --version
 ```
 
-    - Caso não seja, instale o Python 3.10 e troque o Python que é resolvido de `python3` no `PATH` 
+Caso não seja, instale o Python 3.10 e troque o Python que é resolvido de `python3` no `PATH` 
 
-        ```sh
-        # Esse repositório tem várias versões de Python
-        sudo add-apt-repository ppa:deadsnakes/ppa 
+```sh
+# Esse repositório tem várias versões de Python
+sudo add-apt-repository ppa:deadsnakes/ppa 
         
-        # Instalar o Python 3.10
-        sudo apt install -y python3.10
+# Instalar o Python 3.10
+sudo apt install -y python3.10
 
-        # Adicionar a nova versão de Python como uma alternativa no `PATH`
-        sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Adicionar a nova versão de Python como uma alternativa no `PATH`
+sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
-        # Transformar o Python 3.10 como a alternativa padrão de resolução do `PATH`
-        # Este comando abre uma processo iterativo de seleção de resolução padrão. Selecione o código associado ao caminho do Python 3.10.
-        sudo update-alternatives --config python3
-        ```
+# Transformar o Python 3.10 como a alternativa padrão de resolução do `PATH`
+# Este comando abre uma processo iterativo de seleção de resolução padrão. Selecione o código associado ao caminho do Python 3.10.
+sudo update-alternatives --config python3
+```
 
 ### Instalar o ROS 2 Humble
 
@@ -59,7 +62,10 @@ Depois disso, não é necessário prosseguir no guia de instalação.
 
 ### Setup do ROS
 
-Muitos programas do ecossistema do ROS necessitam que o *script* `/opt/ros/humble/setup.bash` tenha sido executado. Por isso, você teria que executá-lo em grande parte dos terminais abertos. Para evitar essa inconveniência, pode-se adicionar a execução desse *script* ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto. Para isso, execute o comando a seguir:
+Muitos programas do ecossistema do ROS necessitam que o *script* `/opt/ros/humble/setup.bash` tenha sido executado.
+Por isso, você teria que executá-lo em grande parte dos terminais abertos.
+Para evitar essa inconveniência, pode-se adicionar a execução desse *script* ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto.
+Para isso, execute o comando a seguir:
 
 ```bash
 echo source /opt/ros/humble/setup.bash >> ~/.bashrc
@@ -67,7 +73,8 @@ echo source /opt/ros/humble/setup.bash >> ~/.bashrc
 
 Agora basta abrir um novo terminal ou executar o *script* no terminal atual.
 
-Lembrando que essa adição ao `~/.bashrc` pode causar lentidão ao abrir uma nova instância do terminal. Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [# macros.bash](#macrosbash).
+Lembrando que essa adição ao `~/.bashrc` pode causar lentidão ao abrir uma nova instância do terminal.
+Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [# macros.bash](#macrosbash).
 
 ### Pacotes Python
 
@@ -209,7 +216,13 @@ Esse comando é uma função definida em [macros.bash](./macros.bash)
 
 ## Progamando missões
 
-O arquivo missions.txt contém a descrição da missão que será seguida pelos drones. Cada linha do arquivo é destinada para um drone (1ª linha: missão do primeiro drone, 2ª linha: segundo drone, ...). A linha é formada por um conjunto de coordenadas. As coordenadas são separadas por ';' enquanto as componentes são separadas por ','. Cada componente (x, y e z) é um número de ponto flutuante (de preferência uma casa decimal). Neste repositório há um exemplo de como deve ser o arquivo.
+O arquivo missions.txt contém a descrição da missão que será seguida pelos drones.
+Cada linha do arquivo é destinada para um drone (1ª linha: missão do primeiro drone, 2ª linha: segundo drone, ...).
+A linha é formada por um conjunto de coordenadas.
+As coordenadas são separadas por ';' enquanto as componentes são separadas por ','.
+Cada componente (x, y e z) é um número de ponto flutuante (de preferência, uma casa decimal).
+Neste repositório há um exemplo de como deve ser o arquivo.
+
 Aviso: no Gazebo o eixo z está invertido, ou seja, para o drone subir, deve-se especificar uma componente z negativa.
 
 ## Estrutura do projeto
@@ -264,14 +277,15 @@ O comando `remodel` faz essa cópia
 #### `sim`
 
 Executa todos os programas necessários para a simulação de um drone no sistema PX4/Gazebo/ROS, inclusive com controle pelo teclado.
-Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos. A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo. Porém é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
-
+Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos.
+A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo.
+Porém, é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
 - uav_number: número de drones na simulação
 - spawn_configuration: caractere indicando a formação em que múltiplos drones serão gerados:
     1. 'l' (line): drones serão gerados em linha (um do lado do outro)
     2. 's' (square): drones serão gerados dentro de um quadrado (ex: 4 drones formam um quadrado de lado 2, 5 drones ficam dentro de um quadrado de lado 3)
 - mission_mode: caractere indicando se o drone seguirá a missão predefinida:
-    1. 't' (true): drones seguem a missão proposta
+    1. 't' (true): drones seguem a missão
     2. 'f' (false): drones seguem comandos do teclado
     
 Exemplo de simulação com 3 drones, formação em quadrado e seguindo a missão:
@@ -282,7 +296,7 @@ sim 3 s t
 
 Por padrão só um drone é gerado, a formação é em linha e o drone segue comandos do teclado.
 
-### `loadmission`
+#### `loadmission`
 
 Copia o arquivo descrevendo a missão para o diretório em que o código pode acessá-lo. Deve ser executado sempre que o arquivo for modificado.
 
@@ -292,7 +306,7 @@ Fecha todos os processos do Gazebo que estão rodando em segundo plano.
 Elimina alguns erros que podem ocorrer ao tentar abrir o Gazebo,
 conforme descrito na seção [# Problemas comuns > Erro na abertura do Gazebo](#erro-na-abertura-do-gazebo).
 
-### mission.txt
+### [mission.txt](./mission.txt)
 
 Onde as coordenadas da missão devem ser especificadas
 
