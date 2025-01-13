@@ -297,7 +297,7 @@ Fecha todos os processos do Gazebo que estão rodando em segundo plano.
 Elimina alguns erros que podem ocorrer ao tentar abrir o Gazebo,
 conforme descrito na seção [# Problemas comuns > Erro na abertura do Gazebo](#erro-na-abertura-do-gazebo).
 
-### mission.txt(./mission.txt)
+### [mission.txt](./mission.txt)
 
 Onde as coordenadas da missão devem ser especificadas
 
