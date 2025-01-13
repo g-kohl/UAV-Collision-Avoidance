@@ -1,6 +1,9 @@
 # Descrição do projeto
 
-Esse sistema executa uma simulação de controle de múltiplos drones. É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas). A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si). Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
+Esse sistema executa uma simulação de controle de múltiplos drones.
+É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas).
+A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si).
+Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
 
 # Como utilizar o projeto
 
@@ -59,7 +62,10 @@ Depois disso, não é necessário prosseguir no guia de instalação.
 
 ### Setup do ROS
 
-Muitos programas do ecossistema do ROS necessitam que o *script* `/opt/ros/humble/setup.bash` tenha sido executado. Por isso, você teria que executá-lo em grande parte dos terminais abertos. Para evitar essa inconveniência, pode-se adicionar a execução desse *script* ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto. Para isso, execute o comando a seguir:
+Muitos programas do ecossistema do ROS necessitam que o *script* `/opt/ros/humble/setup.bash` tenha sido executado.
+Por isso, você teria que executá-lo em grande parte dos terminais abertos.
+Para evitar essa inconveniência, pode-se adicionar a execução desse *script* ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto.
+Para isso, execute o comando a seguir:
 
 ```bash
 echo source /opt/ros/humble/setup.bash >> ~/.bashrc
@@ -67,7 +73,8 @@ echo source /opt/ros/humble/setup.bash >> ~/.bashrc
 
 Agora basta abrir um novo terminal ou executar o *script* no terminal atual.
 
-Lembrando que essa adição ao `~/.bashrc` pode causar lentidão ao abrir uma nova instância do terminal. Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [# macros.bash](#macrosbash).
+Lembrando que essa adição ao `~/.bashrc` pode causar lentidão ao abrir uma nova instância do terminal.
+Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [# macros.bash](#macrosbash).
 
 ### Pacotes Python
 
@@ -270,7 +277,9 @@ O comando `remodel` faz essa cópia
 #### `sim`
 
 Executa todos os programas necessários para a simulação de um drone no sistema PX4/Gazebo/ROS, inclusive com controle pelo teclado.
-Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos. A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo. Porém é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
+Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos.
+A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo.
+Porém, é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
 - uav_number: número de drones na simulação
 - spawn_configuration: caractere indicando a formação em que múltiplos drones serão gerados:
     1. 'l' (line): drones serão gerados em linha (um do lado do outro)
