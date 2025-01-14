@@ -48,7 +48,7 @@ from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleOdometry
 from geometry_msgs.msg import Twist, Vector3
 from std_msgs.msg import Bool
-from math import pi
+import math
 import numpy as np
 import sys
 
@@ -64,8 +64,10 @@ HALF_PI = 1.570796325
 
 DANGER_ZONE_RADIUS = 2
 MAX_SPEED = 1.0
-MIN_SPEED = 0.05
+MIN_SPEED = 0.0
+
 MISSION_TOLERANCE = 0.25
+ANGLE_TOLERANCE = 0.2617 # 15 degrees
 
 class OffboardControl(Node):
 
@@ -401,12 +403,9 @@ class OffboardControl(Node):
             # create and publish TrajectorySetpoint message with NaN values for position and acceleration
             trajectory_message = TrajectorySetpoint()
             trajectory_message.timestamp = int(Clock().now().nanoseconds / 1000)
-
-            # xyz to NED
-            trajectory_message.velocity[1] = velocity_world_x
-            trajectory_message.velocity[0] = -velocity_world_y
-            trajectory_message.velocity[2] = safe_velocity.z
-            
+            trajectory_message.velocity[0] = velocity_world_x
+            trajectory_message.velocity[1] = velocity_world_y
+            trajectory_message.velocity[2] = safe_velocity.z            
             trajectory_message.position[0] = float('nan')
             trajectory_message.position[1] = float('nan')
             trajectory_message.position[2] = float('nan')
@@ -430,17 +429,32 @@ class OffboardControl(Node):
             self.publisher_trajectory.publish(trajectory_message)
 
     def velocity_to_destiny(self):
+        correct_angle = math.atan2(self.mission_steps[self.mission_index][0]-self.uav_positions[self.namespace][0],
+                                   self.mission_steps[self.mission_index][1]-self.uav_positions[self.namespace][1])
+
+        angle_error = correct_angle - self.true_yaw
+        angle_error = (angle_error + math.pi) % (2 * math.pi) - math.pi
+
         error_x = self.mission_steps[self.mission_index][0] - self.uav_positions[self.namespace][0]
-        if abs(error_x) > MISSION_TOLERANCE:
-            self.velocity.x = MAX_SPEED if error_x > 0 else -MAX_SPEED
-        else:
+        error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
+
+        if self.cmdloop_control % 50 == 0:
+            print("RECEBA: ", correct_angle, self.true_yaw, angle_error)
+
+        if abs(angle_error) > ANGLE_TOLERANCE:
             self.velocity.x = MIN_SPEED
 
-        error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
-        if abs(error_y) > MISSION_TOLERANCE:
-            self.velocity.y = MAX_SPEED if error_y > 0 else -MAX_SPEED
+            if angle_error < -ANGLE_TOLERANCE:
+                self.yaw = 0.2
+            elif angle_error > ANGLE_TOLERANCE:
+                self.yaw = -0.2
         else:
-            self.velocity.y = MIN_SPEED
+            self.yaw = MIN_SPEED
+
+            if abs(error_x) > MISSION_TOLERANCE or abs(error_y) > MISSION_TOLERANCE:
+                self.velocity.x = -MAX_SPEED
+            else:
+                self.velocity.x = MIN_SPEED
 
         error_z = self.mission_steps[self.mission_index][2] - self.uav_positions[self.namespace][2]
         if abs(error_z) > MISSION_TOLERANCE:
@@ -504,7 +518,7 @@ class OffboardControl(Node):
 
         for other_uav in self.uav_positions:
             if is_in_danger_zone(uav_position, self.uav_positions[other_uav]) and other_uav != self.namespace:
-                velocity.x += MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+                velocity.x += MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0]) # provavelmente errado
                 velocity.y += MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
                 velocity.z += MAX_SPEED / correct_distance(uav_position[2], self.uav_positions[other_uav][2])
 
@@ -536,8 +550,10 @@ class Vector2:
         return Vector2(self.x / other, self.y / other)
 
 
+# auxiliar functions
+
 def deg2rad(deg: float):
-    return deg * pi / 180.0
+    return deg * math.pi / 180.0
 
 
 def is_in_danger_zone(reference_uav, intruder_uav):
@@ -545,6 +561,7 @@ def is_in_danger_zone(reference_uav, intruder_uav):
         return True
     
     return False
+
 
 def correct_velocity(velocity):
     if velocity > MAX_SPEED:
