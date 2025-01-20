@@ -119,7 +119,7 @@ def generate_uav_nodes(context):
                 executable='velocity_control',
                 name='velocity',
                 arguments=[f'px4_{i+1}', f'{uav_number}', mission_mode, mission_steps],
-                prefix='gnome-terminal --'
+                # prefix='gnome-terminal --'
             )
         ])
 

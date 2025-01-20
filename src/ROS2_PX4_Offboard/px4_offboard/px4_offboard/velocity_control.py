@@ -65,9 +65,15 @@ HALF_PI = 1.570796325
 DANGER_ZONE_RADIUS = 2
 MAX_SPEED = 1.0
 MIN_SPEED = 0.0
+MAX_YAW_SPEED = 0.5
 
 MISSION_TOLERANCE = 0.25
-ANGLE_TOLERANCE = 0.2617 # 15 degrees
+ANGLE_TOLERANCE = 5
+
+N = 0
+E = 90
+S = 180
+W = 270
 
 class OffboardControl(Node):
 
@@ -76,6 +82,7 @@ class OffboardControl(Node):
         self.namespace = namespace
         self.uav_id = int(namespace[-1]) + 1
         self.uav_number = uav_number
+        self.uav_direction = 'N'
 
         self.mission_mode = mission_mode
         self.mission_steps = mission_steps
@@ -388,8 +395,13 @@ class OffboardControl(Node):
                     arrived = False
 
                 if self.mission_index >= len(self.mission_steps): # end of mission
-                    # self.mission_mode = False
-                    self.mission_index -= 1
+                    self.mission_mode = False
+                    # self.mission_index -= 1
+
+                    self.velocity.x = MIN_SPEED
+                    self.velocity.y = MIN_SPEED
+                    self.velocity.z = MIN_SPEED
+                    self.yaw = MIN_SPEED
 
             horizontal_safe_velocity = self.avoid_obstacles()
             safe_velocity = self.avoid_uav(horizontal_safe_velocity)
@@ -416,45 +428,32 @@ class OffboardControl(Node):
             trajectory_message.yawspeed = self.yaw
             trajectory_message.yawspeed = self.yaw
 
-            if self.cmdloop_control % 50 == 0:
-                print("=====================", self.namespace)
-                print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
-                print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
-                print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-                print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
-                print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
-                print(f"avoid uav:           {safe_velocity.x:.2f} {safe_velocity.y:.2f} {safe_velocity.z:.2f}")
-                print(f"final:               {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
+            # if self.cmdloop_control % 50 == 0:
+            #     print("=====================", self.namespace)
+            #     print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
+            #     print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
+            #     print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
+            #     print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
+            #     print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
+            #     print(f"avoid uav:           {safe_velocity.x:.2f} {safe_velocity.y:.2f} {safe_velocity.z:.2f}")
+            #     print(f"final:               {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
 
             self.publisher_trajectory.publish(trajectory_message)
 
     def velocity_to_destiny(self):
-        correct_angle = math.atan2(self.mission_steps[self.mission_index][0]-self.uav_positions[self.namespace][0],
-                                   self.mission_steps[self.mission_index][1]-self.uav_positions[self.namespace][1])
-
-        angle_error = correct_angle - self.true_yaw
-        angle_error = (angle_error + math.pi) % (2 * math.pi) - math.pi
-
         error_x = self.mission_steps[self.mission_index][0] - self.uav_positions[self.namespace][0]
         error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
 
-        if self.cmdloop_control % 50 == 0:
-            print("RECEBA: ", correct_angle, self.true_yaw, angle_error)
+        destiny_direction = get_destiny_direction(error_x, error_y) if (abs(error_x) > MISSION_TOLERANCE or abs(error_y) > MISSION_TOLERANCE) else self.uav_direction
+        self.set_uav_direction()
 
-        if abs(angle_error) > ANGLE_TOLERANCE:
+        if destiny_direction != self.uav_direction:
             self.velocity.x = MIN_SPEED
-
-            if angle_error < -ANGLE_TOLERANCE:
-                self.yaw = 0.2
-            elif angle_error > ANGLE_TOLERANCE:
-                self.yaw = -0.2
+            self.velocity.y = MIN_SPEED
+            self.compute_yaw(destiny_direction)
         else:
             self.yaw = MIN_SPEED
-
-            if abs(error_x) > MISSION_TOLERANCE or abs(error_y) > MISSION_TOLERANCE:
-                self.velocity.x = -MAX_SPEED
-            else:
-                self.velocity.x = MIN_SPEED
+            self.compute_velocity(error_x, error_y)
 
         error_z = self.mission_steps[self.mission_index][2] - self.uav_positions[self.namespace][2]
         if abs(error_z) > MISSION_TOLERANCE:
@@ -462,8 +461,52 @@ class OffboardControl(Node):
         else:
             self.velocity.z = MIN_SPEED
 
-        return abs(error_x) < MISSION_TOLERANCE and abs(error_y) < MISSION_TOLERANCE and abs(error_z) < MISSION_TOLERANCE
+        # if self.cmdloop_control % 50 == 0:
+        #     print("==============================")
+        #     print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
+        #     print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
+        #     print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
+        #     print(f"destiny direction: {destiny_direction}; uav direction: {self.uav_direction}")
+        #     print(f"error x: {error_x}; error y: {error_y}")
 
+        return abs(error_x) < MISSION_TOLERANCE and abs(error_y) < MISSION_TOLERANCE and abs(error_z) < MISSION_TOLERANCE
+        
+    def set_uav_direction(self):
+        angle = math.degrees(self.true_yaw + HALF_PI)
+
+        if abs(N - angle) < ANGLE_TOLERANCE:
+            self.uav_direction = 'N'
+        elif abs(E - angle) < ANGLE_TOLERANCE:
+            self.uav_direction = 'E'
+        elif abs(S - angle) < ANGLE_TOLERANCE:
+            self.uav_direction = 'S'
+        elif abs(W - angle) < ANGLE_TOLERANCE:
+            self.uav_direction = 'W'
+        
+    def compute_yaw(self, destiny_direction):
+        if((self.uav_direction == 'N' and (destiny_direction == 'E' or destiny_direction == 'S')) or 
+           (self.uav_direction == 'E' and (destiny_direction == 'S' or destiny_direction == 'W')) or
+           (self.uav_direction == 'S' and (destiny_direction == 'W' or destiny_direction == 'N')) or
+           (self.uav_direction == 'W' and (destiny_direction == 'N' or destiny_direction == 'E'))):
+            
+            self.yaw = MAX_YAW_SPEED
+        else:
+            self.yaw = -MAX_YAW_SPEED
+
+    def compute_velocity(self, error_x, error_y):
+        if self.uav_direction == 'N':
+            self.velocity.y = get_velocity(error_x, MAX_SPEED, -MAX_SPEED)
+            self.velocity.x = get_velocity(error_y, -MAX_SPEED, MAX_SPEED)
+        elif self.uav_direction == 'E':
+            self.velocity.x = get_velocity(error_x, MAX_SPEED, -MAX_SPEED)
+            self.velocity.y = get_velocity(error_y, MAX_SPEED, -MAX_SPEED)
+        elif self.uav_direction == 'S':
+            self.velocity.y = get_velocity(error_x, -MAX_SPEED, MAX_SPEED)
+            self.velocity.x = get_velocity(error_y, MAX_SPEED, -MAX_SPEED)
+        elif self.uav_direction == 'W':
+            self.velocity.x = get_velocity(error_x, -MAX_SPEED, MAX_SPEED)
+            self.velocity.y = get_velocity(error_y, -MAX_SPEED, MAX_SPEED)
+            
     def avoid_obstacles(self):
         velocity = Vector2(-self.velocity.x, -self.velocity.y) * 100
         horizontal_speed = np.sqrt(velocity.x**2 + velocity.y**2)
@@ -518,8 +561,7 @@ class OffboardControl(Node):
 
         for other_uav in self.uav_positions:
             if is_in_danger_zone(uav_position, self.uav_positions[other_uav]) and other_uav != self.namespace:
-                velocity.x += MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0]) # provavelmente errado
-                velocity.y += MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+                velocity = self.get_avoid_velocity(velocity, uav_position, other_uav)
                 velocity.z += MAX_SPEED / correct_distance(uav_position[2], self.uav_positions[other_uav][2])
 
                 if self.cmdloop_control % 50 == 0:
@@ -531,6 +573,21 @@ class OffboardControl(Node):
 
         return velocity
 
+    def get_avoid_velocity(self, velocity, uav_position, other_uav):
+        if self.uav_direction == 'N':
+            velocity.x -= MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+            velocity.y += MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+        elif self.uav_direction == 'E':
+            velocity.x += MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+            velocity.y += MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+        elif self.uav_direction == 'S':
+            velocity.x += MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+            velocity.y -= MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+        elif self.uav_direction == 'W':
+            velocity.x -= MAX_SPEED / correct_distance(uav_position[0], self.uav_positions[other_uav][0])
+            velocity.y -= MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
+
+        return velocity
 
 class Vector2:
     def __init__(self, x: float, y: float):
@@ -554,6 +611,27 @@ class Vector2:
 
 def deg2rad(deg: float):
     return deg * math.pi / 180.0
+
+
+def get_destiny_direction(error_x, error_y):
+    if error_y >= abs(error_x) and error_y > 0:
+        return 'N'
+        
+    if abs(error_x) >= abs(error_y) and error_x < 0:
+        return 'E'
+        
+    if abs(error_y) >= abs(error_x) and error_y < 0:
+        return 'S'
+        
+    if error_x >= abs(error_y) and error_x > 0:
+        return 'W'
+
+
+def get_velocity(error, positive_speed, negative_speed):
+    if abs(error) > MISSION_TOLERANCE:
+        return positive_speed if error > 0 else negative_speed
+    else:
+        return MIN_SPEED
 
 
 def is_in_danger_zone(reference_uav, intruder_uav):
