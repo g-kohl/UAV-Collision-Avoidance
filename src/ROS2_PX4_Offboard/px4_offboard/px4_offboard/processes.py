@@ -5,8 +5,8 @@ import time
 
 
 def main(args=None):
-    instance = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    spawn_position = sys.argv[2] if len(sys.argv) > 2 else f"0,{instance-1}"
+    instance = int(sys.argv[1])
+    spawn_position = sys.argv[2]
 
     if instance == 0:
         subprocess.run(["gnome-terminal", "--tab", "--", "bash", "-c", 

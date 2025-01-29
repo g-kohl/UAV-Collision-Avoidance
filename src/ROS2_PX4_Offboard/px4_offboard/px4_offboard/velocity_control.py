@@ -35,6 +35,9 @@
 __author__ = "Braden Wagstaff"
 __contact__ = "braden@arkelectron.com"
 
+# from gazebo_msgs.srv import SetEntityState
+# from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Twist, Vector3
 import rclpy
 from rclpy.node import Node
 from rclpy.clock import Clock
@@ -46,13 +49,13 @@ from px4_msgs.msg import VehicleAttitude
 from px4_msgs.msg import VehicleCommand
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleOdometry
-from geometry_msgs.msg import Twist, Vector3
 from std_msgs.msg import Bool
 import math
 import numpy as np
 import sys
 
 
+DISTANCE_COLLISION =  50
 DISTANCE_TOOCLOSE =  150
 DISTANCE_SAFE     = 1500
 MAX_SPEED_LIMIT   =  500
@@ -63,6 +66,7 @@ SPEED_LIMIT_MULTIPLIER = MAX_SPEED_LIMIT / DISTANCE_VARSPACE
 HALF_PI = 1.570796325
 
 DANGER_ZONE_RADIUS = 2
+
 MAX_SPEED = 1.0
 MIN_SPEED = 0.0
 MAX_YAW_SPEED = 0.5
@@ -75,18 +79,24 @@ E = 90
 S = 180
 W = 270
 
+
 class OffboardControl(Node):
 
-    def __init__(self, namespace='', uav_number=1, mission_mode=False, mission_steps=[[0.0, 0.0, 0.0]]):
+    def __init__(self, namespace, uav_number, mission_mode, mission_steps, spawn_configuration):
         super().__init__('minimal_publisher')
         self.namespace = namespace
         self.uav_id = int(namespace[-1]) + 1
         self.uav_number = uav_number
         self.uav_direction = 'N'
+        self.spawn_configuration = spawn_configuration
+        self.spawn_position = get_spawn_position(self.spawn_configuration, int(self.namespace[-1]) - 1, self.uav_number)
 
         self.mission_mode = mission_mode
         self.mission_steps = mission_steps
         self.mission_index = 0
+
+        self.armed = False
+        self.collision_detected = False
 
         self.cmdloop_control = 0
 
@@ -157,6 +167,8 @@ class OffboardControl(Node):
         self.publisher_velocity = self.create_publisher(Twist, f'/{self.namespace}/fmu/in/setpoint_velocity/cmd_vel_unstamped', qos_profile)
         self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', 10)
+
+        self.arm_publisher = self.create_publisher(Bool, f'/{self.namespace}/arm_message', qos_profile)
 
         # create callback function for the arm timer (period is arbitrary, just should be more than 2Hz)
         arm_timer_period = .1 # seconds
@@ -351,7 +363,8 @@ class OffboardControl(Node):
             velocity_variance: float[3]
         """
 
-        self.uav_positions[namespace] = (msg.position[0], msg.position[1], msg.position[2])
+        spawn = get_spawn_position(self.spawn_configuration, int(namespace[-1]) - 1, self.uav_number)
+        self.uav_positions[namespace] = (msg.position[0]+spawn[0], msg.position[1]+spawn[1], msg.position[2])
     
     # receives obstacle distances values
     def obstacle_distance_callback(self, msg):
@@ -375,6 +388,13 @@ class OffboardControl(Node):
 
     # publishes offboard control modes and velocity as trajectory setpoints
     def cmdloop_callback(self):
+        if not self.armed:
+            arm_message = Bool()
+            arm_message.data = True
+
+            self.arm_publisher.publish(arm_message)
+            self.armed = True
+
         if(self.offboard_mode == True):
             self.cmdloop_control += 1
 
@@ -395,13 +415,13 @@ class OffboardControl(Node):
                     arrived = False
 
                 if self.mission_index >= len(self.mission_steps): # end of mission
-                    self.mission_mode = False
-                    # self.mission_index -= 1
+                    # self.mission_mode = False
+                    # self.velocity.x = MIN_SPEED
+                    # self.velocity.y = MIN_SPEED
+                    # self.velocity.z = MIN_SPEED
+                    # self.yaw = MIN_SPEED
 
-                    self.velocity.x = MIN_SPEED
-                    self.velocity.y = MIN_SPEED
-                    self.velocity.z = MIN_SPEED
-                    self.yaw = MIN_SPEED
+                    self.mission_index -= 1
 
             horizontal_safe_velocity = self.avoid_obstacles()
             safe_velocity = self.avoid_uav(horizontal_safe_velocity)
@@ -428,46 +448,54 @@ class OffboardControl(Node):
             trajectory_message.yawspeed = self.yaw
             trajectory_message.yawspeed = self.yaw
 
-            # if self.cmdloop_control % 50 == 0:
-            #     print("=====================", self.namespace)
-            #     print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
-            #     print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
-            #     print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-            #     print(f"velocity to destiny: {self.velocity.x:.2f} {self.velocity.y:.2f} {self.velocity.z:.2f}")
-            #     print(f"avoid obstacles:     {horizontal_safe_velocity.x:.2f} {horizontal_safe_velocity.y:.2f} {self.velocity.z:.2f}")
-            #     print(f"avoid uav:           {safe_velocity.x:.2f} {safe_velocity.y:.2f} {safe_velocity.z:.2f}")
-            #     print(f"final:               {velocity_world_x:.2f} {velocity_world_y:.2f} {safe_velocity.z:.2f}")
+            if self.cmdloop_control % 50 == 0:
+                print("=====================", self.namespace)
+                print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
+                print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
+                print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
 
             self.publisher_trajectory.publish(trajectory_message)
 
     def velocity_to_destiny(self):
+        # error_x = self.mission_steps[self.mission_index][0] - self.uav_positions[self.namespace][0]
+        # error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
+
+        # destiny_direction = get_destiny_direction(error_x, error_y) if (abs(error_x) > MISSION_TOLERANCE or abs(error_y) > MISSION_TOLERANCE) else self.uav_direction
+        # self.set_uav_direction()
+
+        # if destiny_direction != self.uav_direction:
+        #     self.velocity.x = MIN_SPEED
+        #     self.velocity.y = MIN_SPEED
+        #     self.compute_yaw(destiny_direction)
+        # else:
+        #     self.yaw = MIN_SPEED
+        #     self.compute_velocity(error_x, error_y)
+
+        # error_z = self.mission_steps[self.mission_index][2] - self.uav_positions[self.namespace][2]
+        # if abs(error_z) > MISSION_TOLERANCE:
+        #     self.velocity.z = MAX_SPEED if error_z > 0 else -MAX_SPEED
+        # else:
+        #     self.velocity.z = MIN_SPEED
+
+        # return abs(error_x) < MISSION_TOLERANCE and abs(error_y) < MISSION_TOLERANCE and abs(error_z) < MISSION_TOLERANCE
+    
         error_x = self.mission_steps[self.mission_index][0] - self.uav_positions[self.namespace][0]
-        error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
-
-        destiny_direction = get_destiny_direction(error_x, error_y) if (abs(error_x) > MISSION_TOLERANCE or abs(error_y) > MISSION_TOLERANCE) else self.uav_direction
-        self.set_uav_direction()
-
-        if destiny_direction != self.uav_direction:
-            self.velocity.x = MIN_SPEED
-            self.velocity.y = MIN_SPEED
-            self.compute_yaw(destiny_direction)
+        if abs(error_x) > MISSION_TOLERANCE:
+            self.velocity.y = MAX_SPEED if error_x > 0 else -MAX_SPEED
         else:
-            self.yaw = MIN_SPEED
-            self.compute_velocity(error_x, error_y)
+            self.velocity.y = MIN_SPEED
+
+        error_y = self.mission_steps[self.mission_index][1] - self.uav_positions[self.namespace][1]
+        if abs(error_y) > MISSION_TOLERANCE:
+            self.velocity.x = MAX_SPEED if error_y < 0 else -MAX_SPEED
+        else:
+            self.velocity.x = MIN_SPEED
 
         error_z = self.mission_steps[self.mission_index][2] - self.uav_positions[self.namespace][2]
         if abs(error_z) > MISSION_TOLERANCE:
             self.velocity.z = MAX_SPEED if error_z > 0 else -MAX_SPEED
         else:
             self.velocity.z = MIN_SPEED
-
-        # if self.cmdloop_control % 50 == 0:
-        #     print("==============================")
-        #     print(f"x: {self.uav_positions[self.namespace][0]:.2f} : {self.mission_steps[self.mission_index][0]:.2f}")
-        #     print(f"y: {self.uav_positions[self.namespace][1]:.2f} : {self.mission_steps[self.mission_index][1]:.2f}")
-        #     print(f"z: {self.uav_positions[self.namespace][2]:.2f} : {self.mission_steps[self.mission_index][2]:.2f}")
-        #     print(f"destiny direction: {destiny_direction}; uav direction: {self.uav_direction}")
-        #     print(f"error x: {error_x}; error y: {error_y}")
 
         return abs(error_x) < MISSION_TOLERANCE and abs(error_y) < MISSION_TOLERANCE and abs(error_z) < MISSION_TOLERANCE
         
@@ -524,6 +552,10 @@ class OffboardControl(Node):
 
                 continue # anything that is greater than the safe distance is ignored
 
+            if distance < DISTANCE_COLLISION:
+                self.collision_detected = True
+                self.handle_collision()
+
             ray_direction = i * increment_direction + offset_direction # direction of the ray relative to the drone's front
             ray_velocity_angle = ray_direction - velocity_direction # ray-velocity angle (angle with the drone's velocity)
 
@@ -557,19 +589,19 @@ class OffboardControl(Node):
         velocity.y = horizontal_velocity.y
         velocity.z = self.velocity.z
 
-        uav_position = self.uav_positions[self.namespace]
+        # uav_position = self.uav_positions[self.namespace]
 
-        for other_uav in self.uav_positions:
-            if is_in_danger_zone(uav_position, self.uav_positions[other_uav]) and other_uav != self.namespace:
-                velocity = self.get_avoid_velocity(velocity, uav_position, other_uav)
-                velocity.z += MAX_SPEED / correct_distance(uav_position[2], self.uav_positions[other_uav][2])
+        # for other_uav in self.uav_positions:
+        #     if is_in_danger_zone(uav_position, self.uav_positions[other_uav]) and other_uav != self.namespace:
+        #         velocity = self.get_avoid_velocity(velocity, uav_position, other_uav)
+        #         velocity.z += MAX_SPEED / correct_distance(uav_position[2], self.uav_positions[other_uav][2])
 
-                if self.cmdloop_control % 50 == 0:
-                    print("INTRUDER DETECTED")
+        #         if self.cmdloop_control % 50 == 0:
+        #             print("INTRUDER DETECTED")
 
-        velocity.x = correct_velocity(velocity.x)
-        velocity.y = correct_velocity(velocity.y)
-        velocity.z = correct_velocity(velocity.z)
+        # velocity.x = correct_velocity(velocity.x)
+        # velocity.y = correct_velocity(velocity.y)
+        # velocity.z = correct_velocity(velocity.z)
 
         return velocity
 
@@ -588,6 +620,25 @@ class OffboardControl(Node):
             velocity.y -= MAX_SPEED / correct_distance(uav_position[1], self.uav_positions[other_uav][1])
 
         return velocity
+
+    def handle_collision(self):
+        # pose = Pose()
+        # pose.position.x = self.spawn_position[0]
+        # pose.position.y = self.spawn_position[1]
+        # pose.position.z = 0.0
+
+        # yaw = 0.0
+        # pose.orientation.z = math.sin(yaw / 2.0)
+        # pose.orientation.w = math.cos(yaw / 2.0)
+
+        # state_request = SetEntityState.Request()
+        # state_request.state.name = self.namespace
+        # state_request.state.pose = pose
+
+        # future = self.client.call_async(state_request)
+        # rclpy.spin_until_future_complete(self, future)
+        a=1
+
 
 class Vector2:
     def __init__(self, x: float, y: float):
@@ -669,21 +720,28 @@ def get_steps(text):
 
     return mission_steps
 
+def get_spawn_position(spawn_configuration, uav_instance, uav_number):
+    if spawn_configuration == 'l': # UAVs in a line fomation
+        coord_x = uav_instance
+        coord_y = 0
+    elif spawn_configuration == 's': # UAVs in a square formation
+        width = math.ceil(math.sqrt(uav_number))
+        coord_x = uav_instance % width
+        coord_y = uav_instance // width
+
+    return [coord_x*3, coord_y*3]
+
 
 def main(args=None):
     rclpy.init(args=args)
 
-    namespace = sys.argv[1] if len(sys.argv) > 1 else 'default_namespace'
+    namespace = sys.argv[1]
+    uav_number = int(sys.argv[2])
+    mission_mode = True if sys.argv[3] == 't' else False
+    mission_steps = get_steps(sys.argv[4])
+    spawn_configuration = sys.argv[5]
 
-    uav_number = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-
-    mission_mode_text = sys.argv[3] if len(sys.argv) > 3 else 'f'
-    mission_mode = True if mission_mode_text == 't' else False
-
-    mission_steps_text = sys.argv[4] if len(sys.argv) > 4 else "0.0,0.0,0.0"
-    mission_steps = get_steps(mission_steps_text)
-
-    offboard_control = OffboardControl(namespace, uav_number, mission_mode, mission_steps)
+    offboard_control = OffboardControl(namespace, uav_number, mission_mode, mission_steps, spawn_configuration)
 
     rclpy.spin(offboard_control)
 
