@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import geometry_msgs.msg
-import std_msgs.msg
 import rclpy
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
+import std_msgs.msg
 import sys
 
 if sys.platform == 'win32':
@@ -12,7 +12,7 @@ else:
     import tty
 
 
-CONTROL_MESSAGES = """
+control_messages = """
 This node takes keypresses from the keyboard and publishes them
 as Twist messages. 
 Using the arrow keys and WASD you have Mode 2 RC controls.
@@ -38,28 +38,14 @@ move_bindings = {
     '\x1b[C' : (-1, 0, 0, 0), # Right Arrow
     '\x1b[D' : ( 1, 0, 0, 0), # Left Arrow
 }
-# criar tecla pra zerar
-
-# speed_binding = {
-#     'q': (1.1, 1.1),
-#     'z': (.9, .9),
-#     'w': (1.1, 1),
-#     'x': (.9, 1),
-#     'e': (1, 1.1),
-#     'c': (1, .9),
-# }
-
-keys = ['w', 's', 'a', 'd', '\x1b[A', '\x1b[B]', '\x1b[C]', '\x1b[D]']
 
 
 def get_key(settings):
     if sys.platform == 'win32':
-        # getwch() returns a string on Windows
-        key = msvcrt.getwch()
+        key = msvcrt.getwch() # getwch() returns a string on Windows
     else:
         tty.setraw(sys.stdin.fileno())
-        # sys.stdin.read() returns a string on Linux
-        key = sys.stdin.read(1)
+        key = sys.stdin.read(1) # sys.stdin.read() returns a string on Linux
 
         if key == '\x1b': # if the first character is \x1b, we might be dealing with an arrow key
             additional_chars = sys.stdin.read(2) # read the next two characters
@@ -110,7 +96,6 @@ def main(args=None):
     y = 0.0
     z = 0.0
     th = 0.0
-    status = 0.0
     x_val = 0.0
     y_val = 0.0
     z_val = 0.0
@@ -118,7 +103,7 @@ def main(args=None):
 
     try:
         print(f'UAV Namespace: {namespace}')
-        print(CONTROL_MESSAGES)
+        print(control_messages)
 
         while True:
             key = get_key(settings)

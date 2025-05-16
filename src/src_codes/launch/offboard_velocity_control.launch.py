@@ -42,11 +42,9 @@ from launch.substitutions import LaunchConfiguration
 import math
 import os
 
+
 LINE = 'l'
 SQUARE = 's'
-
-TRUE = 't'
-FALSE = 'f'
 
 
 def get_spawn_position(spawn_configuration, uav_instance, uav_number):
@@ -65,6 +63,8 @@ def generate_uav_nodes(context):
     uav_number = int(LaunchConfiguration('uav_number').perform(context))
     spawn_configuration = LaunchConfiguration('spawn_configuration').perform(context)
     mission_mode = LaunchConfiguration('mission_mode').perform(context)
+
+    print(f"UAV number: {uav_number} | Spawn configuration: {spawn_configuration} | Mission mode: {mission_mode}")
 
     current_directory = os.path.dirname(__file__)
     mission_file_path = os.path.join(current_directory, 'mission.txt')
@@ -85,10 +85,10 @@ def generate_uav_nodes(context):
     for i in range(uav_number): # create nodes for each UAV instance
         spawn_position = get_spawn_position(spawn_configuration, i, uav_number)
 
-        if mission_mode == TRUE:
+        if mission_mode == 'true':
             mission_steps = mission_file.readline()
         else:
-            mission_steps = "0.0,0.0,0.0"
+            mission_steps = "go:0.0,0.0,0.0"
 
         nodes.extend([
             Node(
@@ -108,10 +108,10 @@ def generate_uav_nodes(context):
             Node(
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
-                executable='control',
-                name='control',
+                executable='teleoperator',
+                name='teleoperator',
                 arguments=[f'px4_{i+1}'],
-                prefix='gnome-terminal --'
+                prefix='gnome-terminal --' if mission_mode != 'true' else ''
             ),
             Node(
                 package='px4_offboard',
@@ -119,7 +119,7 @@ def generate_uav_nodes(context):
                 executable='velocity_control',
                 name='velocity',
                 arguments=[f'px4_{i+1}', f'{uav_number}', mission_mode, mission_steps, spawn_configuration],
-                # prefix='gnome-terminal --'
+                prefix='gnome-terminal --'
             )
         ])
 
@@ -139,7 +139,7 @@ def generate_launch_description():
 
     mission_mode_argument = DeclareLaunchArgument(
         'mission_mode',
-        default_value=FALSE
+        default_value='false'
     )
 
     return LaunchDescription([
