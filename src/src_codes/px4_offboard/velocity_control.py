@@ -385,7 +385,7 @@ class OffboardControl(Node):
 
     # publishes offboard control modes and velocity as trajectory setpoints
     def cmdloop_callback(self):
-        if self.current_state == "IDLE" and self.mission_mode:
+        if self.current_state == "IDLE" and self.mission_mode: ### TENTAR MANIPULAR ODOMETRIA DO PX4
             arm_message = Bool()
             arm_message.data = True
             self.arm_publisher.publish(arm_message)
@@ -570,6 +570,32 @@ class OffboardControl(Node):
             self.offboard_mode = False
 
             teleport_uav()
+
+        ##########
+
+        # self.arrived = False
+        # self.cmdloop_control = 0
+
+        # while self.cmdloop_control < 1000000:
+        #     self.cmdloop_control += 1
+
+        #     self.velocity.x = MIN_SPEED
+        #     self.velocity.y = MIN_SPEED
+        #     self.yaw = MIN_SPEED
+
+        #     print(self.cmdloop_control)
+
+        # self.cmdloop_control = 0
+
+        # self.mission_mode = True
+        # self.mission_index = 0
+        # self.arrived = True
+        # self.collision_detected = False
+        # self.offboard_mode = False
+
+        # teleport_uav()
+
+
 
 
 class Vector2:
