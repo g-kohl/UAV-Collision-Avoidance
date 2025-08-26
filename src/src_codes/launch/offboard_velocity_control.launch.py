@@ -91,21 +91,21 @@ def generate_uav_nodes(context):
             mission_steps = "go:0.0,0.0,0.0"
 
         nodes.extend([
-            Node(
+            Node( # processes.py
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
                 executable='processes',
                 name='processes',
                 arguments=[f'{i+1}', spawn_position]
             ),
-            Node(
+            Node( # visualizer.py
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
                 executable='visualizer',
                 name='visualizer',
                 arguments=[f'px4_{i+1}']
             ),
-            Node(
+            Node( # teleoperator.py
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
                 executable='teleoperator',
@@ -113,13 +113,13 @@ def generate_uav_nodes(context):
                 arguments=[f'px4_{i+1}'],
                 prefix='gnome-terminal --' if mission_mode != 'true' else ''
             ),
-            Node(
+            Node( # velocity_control.py
                 package='px4_offboard',
                 namespace=f'px4_{i+1}',
                 executable='velocity_control',
                 name='velocity',
                 arguments=[f'px4_{i+1}', f'{uav_number}', mission_mode, mission_steps, spawn_configuration],
-                prefix='gnome-terminal --'
+                # prefix='gnome-terminal --'
             )
         ])
 

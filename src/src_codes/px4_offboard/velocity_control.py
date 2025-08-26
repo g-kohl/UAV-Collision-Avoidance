@@ -44,7 +44,6 @@ from rclpy.clock import Clock
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
 from std_msgs.msg import Bool
-from .teleport import teleport_uav
 import sys
 
 
@@ -163,7 +162,6 @@ class OffboardControl(Node):
         self.publisher_velocity = self.create_publisher(Twist, f'/{self.namespace}/fmu/in/setpoint_velocity/cmd_vel_unstamped', qos_profile)
         self.publisher_trajectory = self.create_publisher(TrajectorySetpoint, f'/{self.namespace}/fmu/in/trajectory_setpoint', qos_profile)
         self.publisher_vehicle_command = self.create_publisher(VehicleCommand, f'/{self.namespace}/fmu/in/vehicle_command', 10)
-
         self.arm_publisher = self.create_publisher(Bool, f'/{self.namespace}/arm_message', qos_profile)
 
         # create callback function for the arm timer (period is arbitrary, just should be more than 2Hz)
@@ -385,7 +383,7 @@ class OffboardControl(Node):
 
     # publishes offboard control modes and velocity as trajectory setpoints
     def cmdloop_callback(self):
-        if self.current_state == "IDLE" and self.mission_mode: ### TENTAR MANIPULAR ODOMETRIA DO PX4
+        if self.current_state == "IDLE" and self.mission_mode:
             arm_message = Bool()
             arm_message.data = True
             self.arm_publisher.publish(arm_message)
@@ -422,7 +420,10 @@ class OffboardControl(Node):
                         self.mission_index += 1
 
                 if self.mission_index >= len(self.mission_steps): # end of mission
-                    self.end_episode()
+                    self.velocity.x = MIN_SPEED
+                    self.velocity.y = MIN_SPEED
+                    self.velocity.z = MAX_SPEED
+                    self.yaw = MIN_SPEED
 
             horizontal_safe_velocity = self.avoid_obstacles()
             safe_velocity = self.avoid_uav(horizontal_safe_velocity)
@@ -461,6 +462,7 @@ class OffboardControl(Node):
         cos_yaw = np.cos(self.true_yaw)
         sin_yaw = np.sin(self.true_yaw)
 
+        # rotation matrix
         body_error_x = error_N * cos_yaw + error_E * sin_yaw
         body_error_y = -error_N * sin_yaw + error_E * cos_yaw
 
@@ -515,7 +517,6 @@ class OffboardControl(Node):
 
             if distance < DISTANCE_COLLISION:
                 self.collision_detected = True
-                self.end_episode()
 
             ray_direction = i * increment_direction + offset_direction # direction of the ray relative to the drone's front
             ray_velocity_angle = ray_direction - velocity_direction # ray-velocity angle (angle with the drone's velocity)
@@ -545,57 +546,13 @@ class OffboardControl(Node):
         return velocity * -0.01
     
 
-    def avoid_uav(self, horizontal_velocity):
+    def avoid_uav(self, horizontal_velocity): # currently, does nothing
         velocity = Vector3()
         velocity.x = horizontal_velocity.x
         velocity.y = horizontal_velocity.y
         velocity.z = self.velocity.z
 
         return velocity
-
-
-    def end_episode(self):
-        self.arrived = False
-
-        if self.current_state != "IDLE":
-            self.velocity.x = MIN_SPEED
-            self.velocity.y = MIN_SPEED
-            self.velocity.z = MAX_SPEED
-            self.yaw = MIN_SPEED
-        else:
-            self.mission_mode = True
-            self.mission_index = 0
-            self.arrived = True
-            self.collision_detected = False
-            self.offboard_mode = False
-
-            teleport_uav()
-
-        ##########
-
-        # self.arrived = False
-        # self.cmdloop_control = 0
-
-        # while self.cmdloop_control < 1000000:
-        #     self.cmdloop_control += 1
-
-        #     self.velocity.x = MIN_SPEED
-        #     self.velocity.y = MIN_SPEED
-        #     self.yaw = MIN_SPEED
-
-        #     print(self.cmdloop_control)
-
-        # self.cmdloop_control = 0
-
-        # self.mission_mode = True
-        # self.mission_index = 0
-        # self.arrived = True
-        # self.collision_detected = False
-        # self.offboard_mode = False
-
-        # teleport_uav()
-
-
 
 
 class Vector2:

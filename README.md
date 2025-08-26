@@ -1,9 +1,8 @@
 # Descrição do projeto
 
 Esse sistema executa uma simulação de controle de múltiplos drones.
-É possível controlar os drones em tempo de execução por teclado ou especificar uma missão (trajeto passando por coordenadas específicas).
-A última versão conta com um sistema anticolisão para drones não se chocarem com objetos estáticos (usando um LiDAR) ou com outros drones (através do compartilhamento da posição dos drones entre si).
-Pretende-se expandir o projeto a fim de incluir aprendizado por reforço no planejamento de rotas para evitar colisões.
+É possível controlar o drone em tempo de execução por teclado ou especificar uma missão (sequência de deslocamentos pelo espaço de simulação).
+Os drones portam um sensor LiDAR para evitar colisões.
 
 # Como utilizar o projeto
 
@@ -216,14 +215,20 @@ Esse comando é uma função definida em [macros.bash](./macros.bash)
 
 ## Progamando missões
 
-O arquivo missions.txt contém a descrição da missão que será seguida pelos drones.
-Cada linha do arquivo é destinada para um drone (1ª linha: missão do primeiro drone, 2ª linha: segundo drone, ...).
-A linha é formada por um conjunto de coordenadas.
-As coordenadas são separadas por ';' enquanto as componentes são separadas por ','.
-Cada componente (x, y e z) é um número de ponto flutuante (de preferência, uma casa decimal).
-Neste repositório há um exemplo de como deve ser o arquivo.
+O arquivo [mission.txt](./src/mission.txt) contém a descrição da missão que será seguida por cada drone.
+As missões são divididas em passos que podem ser comandos para o drone girar no seu eixo ou se deslocar pelas coordenadas espaciais.
+Cada passo é dividido por ";".
+Cada linha é reservada para a missão de cada drone: linha 1 -> missão do drone 1, linha 2 -> missão do drone 2 e etc.
 
-Aviso: no Gazebo o eixo z está invertido, ou seja, para o drone subir, deve-se especificar uma componente z negativa.
+Para girar, escreva no arquivo: `turn:90`, o que faz o drone girar 90 graus para a direita (você pode especificar o ângulo que quiser).
+
+Para deslocar o drone, escreva: `go:2.0,3.0,-4.0`, o que faz o drone se deslocar 2 unidades no eixo X, 3 no eixo Y e descer 4 unidades no eixo Z.
+As componentes especificadas indicam um deslocamento relativo ao drone, e não uma coordenada específica para onde o drone vai.
+
+Por exemplo, se a missão for: `go:2.0,0.0,0.0;go:2.0,0.0,0.0`, o drone primeiro irá se deslocar 2 unidades no eixo X e depois mais 2 unidades no mesmo eixo.
+Os deslocamentos são feitos no sistema de coordenadas do mundo e não do drone.
+
+Um exemplo de arquivo de missão está nesse repositório em [src/mission.txt](./src/mission.txt)
 
 ## Estrutura do projeto
 
@@ -261,7 +266,7 @@ Mais tecnicamente, faz o *build* de todos os pacotes ROS.
 Realiza o *build* apenas do pacote principal do projeto. Precisa ser executado toda vez que quiser efetivar modificações dentro de [`src/`](./src/).
 Também executa [`setup`](#setup).
 
-Mais tecnicamente, faz o *build* apenas do pacote ["px4_offboard"](./src/ROS2_PX4_Offboard/px4_offboard/)
+Mais tecnicamente, faz o *build* apenas do pacote ["px4_offboard"](./src/src_codes/px4_offboard/)
 
 #### `remodel`
 
@@ -276,22 +281,19 @@ O comando `remodel` faz essa cópia
 
 #### `sim`
 
-Executa todos os programas necessários para a simulação de um drone no sistema PX4/Gazebo/ROS, inclusive com controle pelo teclado.
-Na verdade, executa apenas o script de *launch* do pacote [`px4_offboard`](./src/ROS2_PX4_Offboard/px4_offboard/), que por sua vez inicializa esses processos.
+Executa o script de *launch* do pacote [`px4_offboard`](./src/src_codes/px4_offboard/), que por sua vez inicializa os programas necessários para a simulação do drone.
 A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo.
 Porém, é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
-- uav_number: número de drones na simulação
-- spawn_configuration: caractere indicando a formação em que múltiplos drones serão gerados:
+- uav_number (-n): número de drones na simulação
+- spawn_configuration (-c): caractere indicando a formação em que múltiplos drones serão gerados:
     1. 'l' (line): drones serão gerados em linha (um do lado do outro)
     2. 's' (square): drones serão gerados dentro de um quadrado (ex: 4 drones formam um quadrado de lado 2, 5 drones ficam dentro de um quadrado de lado 3)
-- mission_mode: caractere indicando se o drone seguirá a missão predefinida:
-    1. 't' (true): drones seguem a missão
-    2. 'f' (false): drones seguem comandos do teclado
+- mission_mode (-m): indica se o drone seguirá a missão predefinida:
     
 Exemplo de simulação com 3 drones, formação em quadrado e seguindo a missão:
 
 ```sh
-sim 3 s t
+sim -n 3 -c s -m
 ```
 
 Por padrão só um drone é gerado, a formação é em linha e o drone segue comandos do teclado.
@@ -306,11 +308,11 @@ Fecha todos os processos do Gazebo que estão rodando em segundo plano.
 Elimina alguns erros que podem ocorrer ao tentar abrir o Gazebo,
 conforme descrito na seção [# Problemas comuns > Erro na abertura do Gazebo](#erro-na-abertura-do-gazebo).
 
-### [mission.txt](./mission.txt)
+### [mission.txt](./src/mission.txt)
 
 Onde as coordenadas da missão devem ser especificadas
 
-### [src/](./src/)
+### [src/src_codes/](./src/src_codes/)
 
 Contém o código fonte dos *ROS nodes*.
 
