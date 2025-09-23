@@ -7,24 +7,17 @@ Os drones portam um sensor LiDAR para evitar colisões.
 # Como utilizar o projeto
 
 ## Configuração da toolchain
-
-Os passos de instalação aqui descritos são voltados e foram testados em um sistema Ubuntu 22.04 LTS.
+Os passos de instalação são voltados para um sistema Ubuntu 22.04 LTS, onde foram feitos os testes.
 A documentação oficial recomenda que esse seja o sistema utilizado.
 
 ### Avisos
 
-A qualquer momento que haja um problema, certifique-se de que a seção [**# Problemas comuns**](#problemas-comuns) não cobre o seu erro como um dos primeiros passos de troubleshooting.
+Sempre que houver um problema, certifique-se de que a seção [**# Problemas comuns**](#problemas-comuns) não cobre o seu erro como um dos primeiros passos de troubleshooting.
 
 Recomenda-se a utilização de um sistema limpo e destrutível para o desenvolvimento do projeto, já que alguns passos de instalação neste guia podem ser destrutivos.
-Uma alternativa é utilizar uma máquina virual, mas a divisão de recursos pode ser um problema.
-Caso queira utilizar mas nunca tenha instalado uma máquina virtual anteriormente, recomendo assistir a [este curto vídeo](https://www.youtube.com/watch?v=nvdnQX9UkMY).
+Uma alternativa é utilizar uma máquina virual.
 
 ### Versão correta do Python
-
-O Python é uma ferramenta notória pela baixa *backward compatibility*.
-Perdi muitas horas por culpa de versões do Python e de pacotes *builtin* conflitantes.
-Talvez exista alguma outra forma melhor de resolver o problema, pois a solução presente a seguir não é ideal.
-Recomenda-se seguir os passos a seguir à risca caso não tenha certeza do que está fazendo.
 
 Certifique-se de que a versão de `python3` resolvido pelo `PATH` é o Python 3.10.
 
@@ -57,29 +50,31 @@ até o comando `sudo apt upgrade` (inclusive) na seção `Install ROS 2 packages
 Esse processo vai demorar, mas geralmente não precisa de supervisão humana.
 3. Instale o `ros-dev-tools` presente no guia.
 
-Depois disso, não é necessário prosseguir no guia de instalação. 
+Teste a instalação do ROS, conforme indica o tutorial em `Try some examples` (é necessário fazer o setup do ROS, descrito logo abaixo).
+
+Depois disso, não é necessário prosseguir no guia de instalação.
 
 ### Setup do ROS
 
-Muitos programas do ecossistema do ROS necessitam que o *script* `/opt/ros/humble/setup.bash` tenha sido executado.
+Muitos programas do ecossistema do ROS necessitam que o script `/opt/ros/humble/setup.bash` tenha sido executado.
 Por isso, você teria que executá-lo em grande parte dos terminais abertos.
-Para evitar essa inconveniência, pode-se adicionar a execução desse *script* ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto.
+Para evitar essa inconveniência, pode-se adicionar a execução desse script ao `~/.bashrc`, um script que roda toda vez que um novo terminal bash é aberto.
 Para isso, execute o comando a seguir:
 
 ```bash
 echo source /opt/ros/humble/setup.bash >> ~/.bashrc
 ```
 
-Agora basta abrir um novo terminal ou executar o *script* no terminal atual.
+Agora basta abrir um novo terminal ou executar o script no terminal atual.
 
 Lembrando que essa adição ao `~/.bashrc` pode causar lentidão ao abrir uma nova instância do terminal.
-Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [# macros.bash](#macrosbash).
+Para mitigar esse problema, pode-se optar por apenas utilizar a função [`setros`](#setros) do [`macros.bash`](./macros.bash), explicado mais adiante na seção [**# macros.bash**](#macrosbash).
 
 ### Pacotes Python
 
-A *toolchain* depende de alguns pacotes de Python.
-Além disso, alguns pacotes precisam de um *downgrade* 
-Entre eles, é necessário fazer o *downgrade* do pacote `setuptools` pois o `setup.py`, utilizado no processo de instalação múltiplas vezes,
+A toolchain depende de alguns pacotes do Python.
+Além disso, alguns pacotes precisam de um downgrade.
+Entre eles, é necessário fazer o downgrade do pacote `setuptools` pois o `setup.py`, utilizado no processo de instalação múltiplas vezes,
 foi deprecado nas versões mais novas de `setuptools`.
 Às vezes também é necessário fazer downgrade do `empy`.
 Para garantir que isso não será um problema, faça os dois.
@@ -94,7 +89,7 @@ pip install --user setuptools==58.2.0 empy==3.3.4 kconfiglib jsonschema jinja2 p
 ### Micro DDS
 
 Este é o programa que permite a comunicação do PX4 com o ROS.
-Ele pode ser instalado onde quiser, mas o *script* abaixo o instala na *home*.
+Ele pode ser instalado onde quiser, mas o script abaixo o instala na home.
 Este processo demorará, mas geralmente não precisa de supervisão humana até o seu final.
 No final, ele poderá pedir uma senha.
 
@@ -113,46 +108,51 @@ sudo ldconfig /usr/local/lib/
 ### Instalar o PX4-Autopilot
 
 O [repositório oficial do PX4-Autopilot](https://github.com/PX4/PX4-Autopilot.git) carecia de algumas funcionalidades necessárias.
-Então este repositório utiliza uma versão customizada do repositório
+Então este repositório utiliza uma versão customizada do repositório.
 
-Baixar o repositório personalizado do PX4:
+Para instalar, siga o script abaixo:
 
 ```sh
 cd
 git clone https://github.com/felipebarichello/PX4-Autopilot-ColAvoid.git --recursive
+cd PX4-Autopilot-ColAvoid
+bash Tools/setup/ubuntu.sh # Isso instala devidamente o PX4 com o Gazebo compatível
 ```
 
-Ele deve ser instalado na home (ou deve conter um *symlink* lá) pois o *script* de *launch* presume isso e não funcionará caso contrário.
+Ele deve ser instalado na home (ou deve conter um symlink lá) pois o script de launch presume isso e não funcionará caso contrário.
 Alternativamente, pode-se alterar o script
-[`$REPO/src/ROS2_PX4_Offboard/px4_offboard/px4_offboard/processes.py`](./src/ROS2_PX4_Offboard/px4_offboard/px4_offboard/processes.py)
+[`processes.py`](./src/src_codes/px4_offboard/processes.py)
 para utilizar o caminho desejado.
 
-Em seguida, execute o seguinte *script* para instalar o PX4, dentro do diretório baixado:
+Teste se a instalação do PX4 e Gazebo foi bem sucedida abrindo uma simulação básica:
 
 ```sh
-bash Tools/setup/ubuntu.sh
+make px4_sitl gz_x500 # Rodar esse comando dentro da pasta do PX4
 ```
 
-É normal aparecerem vários *warnings* no processo de instalação.
+Após, no mesmo terminal, espere pela mensagem: `INFO  [commander] Ready for takeoff!` e escreva no terminal "commander takeoff".
 
-### Testar a instalação
+O comportamento esperado é o drone levantar voo.
 
-Antes de prosseguir, perceba que atualmente, aparentemente para todos,
-está ocorrendo um erro na primeira vez que a simulação é executada (ver [**# Problemas comuns > O simulador abre mas está vazio**](#o-simulador-abre-mas-está-vazio))
+### Testar o projeto
 
-Caso nenhum erro ocorra, vá para o local em que colocou este repositório e execute os comandos:
+Antes de testar o projeto de fato, certifique-se, no arquivo de código [`processes.py`](./src/src_codes/px4_offboard/processes.py),
+se a constante `PX4_PATH` contém o caminho correto até o diretório do PX4.
+
+Após, vá para o local em que colocou este repositório e execute os comandos:
 
 ```sh
 source ./macros.bash
 setros && buildall && remodel && loadmission && sim
 ```
-e verifique se o comportamento é compatível com a descrição a seguir **(não feche as janelas antes de ler a seção [**# Fechar os programas**](#fechar-os-programas)**:
+
+e verifique se o comportamento é compatível com a descrição a seguir **(não feche as janelas antes de ler a seção [**# Fechar os programas**](#fechar-os-programas))**:
 
 - Duas novas abas de terminal serão abertas na janela atual, além de uma nova janela:
     1. **PX4 Shell**: A aba onde o comando [`sim`](#sim) foi usado. Terá outputs como: `[velocity_control-4] [INFO] [1710362381.891866260] [px4_offboard.velocity]: FlightCheck: True`
     2. As novas abas:
         1. **Cliente DDS**: Uma das abas frequentemente imprime a seguinte linha: `INFO  [uxrce_dds_client] time sync converged`
-        2. **SITL**: A outra aba é mais colorida (se seu terminal suporta cores) e imprime mensagens que começam com algo semelhante a `[1710362261.223419] info     | ProxyClient.cpp`
+        2. **SITL**: A outra aba imprime mensagens que começam com algo semelhante a `[1710362261.223419] info     | ProxyClient.cpp`
     3. **Teleop**: A nova janela que apresenta vários controles de teclado e termina com "Press SPACE to arm/disarm the drone"
 - Adicionalmente, é aberta uma janela gráfica do Gazebo.
 
@@ -162,7 +162,7 @@ Após isso, caso tenha encontrado algum erro, veja a seção [**# Problemas comu
 
 ## Fechar os programas
 
-Alguns programas abertos, lançados como nodos do ROS, possuem suas próprias janelas, como o Gazebo o o RViz.
+Alguns programas abertos, lançados como nodos do ROS, possuem suas próprias janelas, como o Gazebo e o RViz.
 Fechar eles pelo botão de fechar da janela não só não fecha eles, como pode travar um processo do Gazebo.
 Por isso, feche todos os programas diretamente no terminal com `Ctrl+C`.
 Veja a seção [**# Problemas comuns > Erro na abertura do Gazebo**](#erro-na-abertura-do-gazebo) para ver o erro que pode ser causado por isso.
@@ -172,23 +172,22 @@ Caso não haja nenhum erro, prossiga para a seção [**# Estrutura do projeto**]
 
 ### O simulador abre mas está vazio
 
-Este erro se caracteriza por uma mensagem de erro em vermelho no terminal que executa o SITL
-(ver [**# Testar a instalação**](#testar-a-instalação) para identificar esse terminal).
+Este erro se caracteriza por uma mensagem de erro em vermelho no terminal que executa o SITL (ver [**# Testar o projeto**](#testar-o-projeto) para identificar esse terminal).
 O erro diz "Service call timed out. Check GZ_SIM_RESOURCE_PATH is set correctly.".
 Pode acontecer toda vez que a simulação é executada pela primeira vez.
 Deve ser resolvido fechando todos os processos e executando novamente o comando [`sim`](#sim).
 
 ### Ao tentar simular, erros em vermelho acusando algo no CMakeLists.txt
 
-É um problema causado pelo repositório oficial do Github.
-Para solucionar, deve-se criar uma *tag* de *commit* no *commit* do repositório do `PX4-Autopilot-ColAvoid`:
+É um problema causado pelo repositório oficial do GitHub.
+Para solucionar, deve-se criar uma tag de commit no commit do repositório do `PX4-Autopilot-ColAvoid`:
 
 ```sh
 git tag v1.14.0-dev
 ```
 
-Daí para frente, lembre-se de, em todo novo *commit* do repositório, adicionar a *tag* e fazer um `git push --all` em vez de um `git push` ordinário.
-Também pode-se fazer um `git push --tags` para fazer o *push* apenas das *tags*
+Daí para frente, lembre-se de, em todo novo commit do repositório, adicionar a tag e fazer um `git push --all` em vez de um `git push` ordinário.
+Também pode-se fazer um `git push --tags` para fazer o push apenas das tags.
 
 ### ninja: error: unknown target
 
@@ -211,7 +210,7 @@ kgz
 ```
 
 para eliminar os processos do Gazebo.
-Esse comando é uma função definida em [macros.bash](./macros.bash)
+Esse comando é uma função definida em [macros.bash](./macros.bash).
 
 ## Progamando missões
 
@@ -228,7 +227,7 @@ As componentes especificadas indicam um deslocamento relativo ao drone, e não u
 Por exemplo, se a missão for: `go:2.0,0.0,0.0;go:2.0,0.0,0.0`, o drone primeiro irá se deslocar 2 unidades no eixo X e depois mais 2 unidades no mesmo eixo.
 Os deslocamentos são feitos no sistema de coordenadas do mundo e não do drone.
 
-Um exemplo de arquivo de missão está nesse repositório em [src/mission.txt](./src/mission.txt)
+Um exemplo de arquivo de missão está nesse repositório em [src/mission.txt](./src/mission.txt).
 
 ## Estrutura do projeto
 
@@ -236,17 +235,17 @@ Esta seção explica a árvore de arquivos do projeto e quais comandos são nece
 
 ### [macros.bash](./macros.bash)
 
-O script [macros.bash](./macros.bash) possui funções de shell que executa os principais comandos necessários para o desenvolvimento do projeto.
+O script [macros.bash](./macros.bash) possui funções de shell que executam os principais comandos necessários para o desenvolvimento do projeto.
 
-Para utilizar os comandos nele contidos, execute `source macros.bash` em cada instância de terminal que precisa deles.
+Para utilizar os comandos nele contidos, execute `source macros.bash` em cada instância de terminal que precise deles.
 Note que alguns deles requerem que o script [`install/setup.bash`](./install/setup.bash) tenha sido executado previamente (pode ser através do comando [`setup`](#setup)).
-Alguns comandos só funcionam se o *working directory* for a raíz deste repositório, então alguns erros podem ser originados desse detalhe. 
-Abaixo, listo eles e descrevo o objetivo de cada um.
+Alguns comandos só funcionam se o working directory for a raíz deste repositório, então alguns erros podem ser originados desse detalhe. 
+Abaixo, está a descrição de cada um.
 
 #### `setros`
 
 Executa o script `source /opt/ros/humble/setup.bash` para o terminal atual.
-Muitos programas do ecossistema do ROS necessitam que esse *script* tenha sido executado.
+Muitos programas do ecossistema do ROS necessitam que esse script tenha sido executado.
 
 #### `setup`
 
@@ -254,36 +253,34 @@ Executa o script `install/setup.bash` para o terminal atual.
 
 #### `buildall`
 
-O primeiro build (quando não há os diretórios [`install/`](./install/) e [`build`](./build/) na raíz do projeto).
+O primeiro build (quando não há os diretórios [`install/`](./install/) e [`build/`](./build/) na raíz do projeto).
 Muitos outros comandos dependem deste ter sido executado.
 Também executa [`setup`](#setup).
 
-Mais tecnicamente, faz o *build* de todos os pacotes ROS.
+Mais tecnicamente, faz o build de todos os pacotes ROS.
 Às vezes pode ser a solução para algum problema se estiver relacionado com um pacote que não seja o principal.
 
 #### `build`
 
-Realiza o *build* apenas do pacote principal do projeto. Precisa ser executado toda vez que quiser efetivar modificações dentro de [`src/`](./src/).
+Realiza o build apenas do pacote principal do projeto. Precisa ser executado toda vez que quiser efetivar modificações dentro de [`src/`](./src/).
 Também executa [`setup`](#setup).
 
-Mais tecnicamente, faz o *build* apenas do pacote ["px4_offboard"](./src/src_codes/px4_offboard/)
+Mais tecnicamente, faz o build apenas do pacote [`px4_offboard`](./src/src_codes/px4_offboard/).
 
 #### `remodel`
 
 Copia os arquivos relacionados ao modelo do drone (tudo que está em [`models/`](./models/)) para o diretório em que o PX4 consegue referenciá-los.
 
 Para modificar o modelo, por exemplo para adicionar um LIDAR, o arquivo do modelo deve ser substituído.
-Isso pode ser feito modificando os arquivos dentro de
-`$PX4_AUTOPILOT/Tools/simulation/gz/models/`.
-Mas para manter o versionamento dos arquivos de modelos, os modelos devem ser alterados em [`models/`](./models/),
-e então copiados para lá.
-O comando `remodel` faz essa cópia
+Isso pode ser feito modificando os arquivos dentro do diretório do PX4 em `seu_px4/Tools/simulation/gz/models/`.
+Mas para manter o versionamento dos arquivos de modelos, os modelos devem ser alterados em [`models/`](./models/), e então copiados para lá.
+O comando `remodel` faz essa cópia.
 
 #### `sim`
 
-Executa o script de *launch* do pacote [`px4_offboard`](./src/src_codes/px4_offboard/), que por sua vez inicializa os programas necessários para a simulação do drone.
-A simulação padrão inclui um drone controlado por teclado em um *world* vazio do Gazebo.
-Porém, é possível mudar essa configuração também através deste comando com adição de algumas *flags*:
+Executa o script de launch do pacote [`px4_offboard/`](./src/src_codes/px4_offboard), que por sua vez inicializa os processos necessários para rodar a simulação.
+A simulação padrão inclui um drone controlado por teclado em um world vazio do Gazebo.
+Porém, é possível mudar essa configuração também através deste comando com adição de algumas flags:
 - uav_number (-n): número de drones na simulação
 - spawn_configuration (-c): caractere indicando a formação em que múltiplos drones serão gerados:
     1. 'l' (line): drones serão gerados em linha (um do lado do outro)
@@ -310,11 +307,11 @@ conforme descrito na seção [# Problemas comuns > Erro na abertura do Gazebo](#
 
 ### [mission.txt](./src/mission.txt)
 
-Onde as coordenadas da missão devem ser especificadas
+Onde as coordenadas da missão devem ser especificadas.
 
 ### [src/src_codes/](./src/src_codes/)
 
-Contém o código fonte dos *ROS nodes*.
+Contém o código fonte dos ROS nodes.
 
 ### [models/](./models/)
 
@@ -331,8 +328,9 @@ As funções [`setup`](#setup), [`build`](#build) e [`buildall`](#buildall) do s
 
 ### Outros arquivos gerados automaticamente
 
-Todos os arquivos dentro de [`build`](./build/), [`install`](./install/) e [`log`](./log/) são gerados automaticamente. Fora o `install/setup.bash`, eles geralmente não são muito úteis para uso manual.
+Todos os arquivos dentro de [`build`](./build/), [`install`](./install/) e [`log`](./log/) são gerados automaticamente.
+Fora o `install/setup.bash`, eles geralmente não são muito úteis para uso manual.
 
 # Referências
 
-Esse repositório foi construído a partir [deste](https://github.com/felipebarichello/quad-col-avoid.git)
+Esse repositório foi construído a partir [deste](https://github.com/felipebarichello/quad-col-avoid.git).
